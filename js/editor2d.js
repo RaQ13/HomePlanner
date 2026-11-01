@@ -15,6 +15,9 @@
   // „Tylko instalacje”: rzut jako jasny podkład (ściany, otwory, pokoje) z instalacjami na wierzchu.
   try { E.instOnly = localStorage.getItem('planer.instonly') === '1'; } catch (e) { E.instOnly = false; }
   E.setInstOnly = (v) => { E.instOnly = !!v; try { localStorage.setItem('planer.instonly', v ? '1' : '0'); } catch (e) { /* ignoruj */ } E.render(); App.emit('view2d'); };
+  // Wymiary instalacji: długości tras, odległości punktów od ścian, wysokość od podłogi / sufitu.
+  try { E.instDims = localStorage.getItem('planer.instdims') !== '0'; } catch (e) { E.instDims = true; }
+  E.setInstDims = (v) => { E.instDims = !!v; try { localStorage.setItem('planer.instdims', v ? '1' : '0'); } catch (e) { /* ignoruj */ } E.render(); App.emit('view2d'); };
   E.instOn = () => E.instLayer !== 'none' || E.instOnly;
   E.instVisible = (o) => E.instLayer === 'none' || E.instLayer === 'all' || E.instLayer === App.installGroup(o);
   const BG = '#fcfcfa';
@@ -1046,9 +1049,10 @@
       ctx.setLineDash([]);
     });
     if (tech) drawTechDims(lv);
-    else if (s.dims) lv.walls.forEach(drawWallDim);
+    else if (s.dims && !only) lv.walls.forEach(drawWallDim);
     lv.rooms.forEach(r => drawRoomLabel(lv, r));
-    if (tech) drawTitle(lv);
+    if (E.instOn() && E.instDims) drawInstallDims(lv);
+    if (tech) { drawTitle(lv); if (E.instOn()) drawInstallLegend(lv); }
 
     if (E.hover && E.tool === 'select' && !E.drag && E.hover.select !== App.selection) drawOutline(E.hover.obj || App.find(E.hover.select).obj, 'rgba(37,99,235,0.45)', 2);
     const sel = App.find(App.selection);
@@ -1287,7 +1291,8 @@
     const L = G.dist(a, b);
     if (L < 0.5) return;
     const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L, t = px(4);
-    ctx.strokeStyle = '#111';
+    const col = opt.color || '#111';
+    ctx.strokeStyle = col;
     ctx.lineWidth = px(0.8);
     line(a, b);
     (opt.ext || []).forEach(([q, from]) => line(from, { x: q.x + (q.x - from.x) / (G.dist(q, from) || 1) * px(4), y: q.y + (q.y - from.y) / (G.dist(q, from) || 1) * px(4) }));
@@ -1299,7 +1304,119 @@
     if (ang <= -Math.PI / 2 + 1e-3) ang += Math.PI;
     // Tekst nad linią (po stronie „do góry” po obróceniu).
     const nx = Math.sin(ang), ny = -Math.cos(ang);
-    label((a.x + b.x) / 2 + nx * px(7), (a.y + b.y) / 2 + ny * px(7), text, { angle: ang, font: '10px system-ui, sans-serif', color: '#111' });
+    label((a.x + b.x) / 2 + nx * px(7), (a.y + b.y) / 2 + ny * px(7), text, { angle: ang, font: '10px system-ui, sans-serif', color: col, bg: opt.bg });
+  }
+  // Promień od punktu o w kierunku (dx, dy) do najbliższego lica ściany kondygnacji – odległość albo Infinity.
+  function wallRay(lv) {
+    const edges = lv.walls.map(w => App.wallPolygon(lv, w)).flatMap(pl => pl.map((q, i) => [q, pl[(i + 1) % pl.length]]));
+    return (o, dx, dy) => {
+      let best = Infinity;
+      edges.forEach(([a, b]) => {
+        const ex = b.x - a.x, ey = b.y - a.y, den = dx * ey - dy * ex;
+        if (Math.abs(den) < 1e-9) return;
+        const t = ((a.x - o.x) * ey - (a.y - o.y) * ex) / den, u = ((a.x - o.x) * dy - (a.y - o.y) * dx) / den;
+        if (t > 0.01 && u >= -1e-6 && u <= 1 + 1e-6) best = Math.min(best, t);
+      });
+      return best;
+    };
+  }
+  // Wysokość instalacji: w dolnej połowie kondygnacji od podłogi, w górnej – od sufitu.
+  const instHeight = (lv, z) => (z > lv.height / 2 ? `${fmtCm(lv.height - z)} od sufitu` : `h=${fmtCm(z)}`);
+  const upright = (ang) => { if (ang > Math.PI / 2 + 1e-3) ang -= Math.PI; if (ang <= -Math.PI / 2 + 1e-3) ang += Math.PI; return ang; };
+  // Wymiary instalacji: trasy – długości odcinków i całej trasy z wysokością; punkty na ścianie – odległość
+  // od najbliższego lica ściany poprzecznej i wysokość; punkty swobodne – odległości od ścian w obu osiach.
+  function drawInstallDims(lv) {
+    const ray = wallRay(lv), font = '9.5px system-ui, sans-serif', bg = 'rgba(255,255,255,0.85)';
+    lv.installs.forEach(o => {
+      if (!E.instVisible(o)) return;
+      const d = App.installDef(o.type), col = App.installColor(o);
+      if (o.pts) {
+        if (o.pts.length < 2) return;
+        let longest = 1;
+        for (let k = 1; k < o.pts.length; k++) {
+          const a = o.pts[k - 1], b = o.pts[k], L = G.dist(a, b);
+          if (L > G.dist(o.pts[longest - 1], o.pts[longest])) longest = k;
+          if (o.pts.length > 2 && L * E.scale > 40) {
+            const ang = upright(Math.atan2(b.y - a.y, b.x - a.x)), nx = Math.sin(ang), ny = -Math.cos(ang);
+            label((a.x + b.x) / 2 + nx * px(8), (a.y + b.y) / 2 + ny * px(8), fmtCm(L), { angle: ang, font, color: col });
+          }
+        }
+        const a = o.pts[longest - 1], b = o.pts[longest];
+        const ang = upright(Math.atan2(b.y - a.y, b.x - a.x)), nx = -Math.sin(ang), ny = Math.cos(ang);
+        const text = `${d.name}: ${fmtM(App.runLength(o))} · ${instHeight(lv, o.z)}`;
+        label((a.x + b.x) / 2 + nx * px(10), (a.y + b.y) / 2 + ny * px(10), text, { angle: ang, font: '600 ' + font, color: col, bg });
+        return;
+      }
+      const at = App.installAt(lv, o);
+      if (!at) return;
+      if (!o.wallId) {
+        // Punkt swobodny: najbliższa ściana w poziomie i w pionie.
+        [[1, 0], [0, 1]].forEach(([dx, dy]) => {
+          const t1 = ray(at.a, dx, dy), t0 = ray(at.a, -dx, -dy), t = Math.min(t0, t1);
+          if (!isFinite(t)) return;
+          const s = t1 <= t0 ? 1 : -1;
+          dimLine(at.a, { x: at.a.x + dx * s * t, y: at.a.y + dy * s * t }, { color: col, bg });
+        });
+        return;
+      }
+      // Punkt na ścianie: wymiar wzdłuż lica do najbliższej ściany poprzecznej, odsunięty do wnętrza.
+      const off = px(22), q = { x: at.f.x + at.n.x * 2, y: at.f.y + at.n.y * 2 };
+      const t1 = ray(q, at.u.x, at.u.y), t0 = ray(q, -at.u.x, -at.u.y), t = Math.min(t0, t1);
+      const base = { x: at.f.x + at.n.x * off, y: at.f.y + at.n.y * off };
+      if (isFinite(t) && t < 3000) {
+        const s = t1 <= t0 ? 1 : -1, end = { x: at.f.x + at.u.x * s * t, y: at.f.y + at.u.y * s * t };
+        const endOff = { x: end.x + at.n.x * off, y: end.y + at.n.y * off };
+        dimLine(base, endOff, { color: col, bg, ext: [[base, at.f], [endOff, end]] });
+      }
+      // Wysokość obok symbolu, po stronie pomieszczenia.
+      const h = { x: at.f.x + at.n.x * px(34), y: at.f.y + at.n.y * px(34) };
+      label(h.x, h.y, instHeight(lv, o.z), { font, color: col, bg });
+    });
+  }
+  // Legenda symboli instalacji użytych na rzucie (rysunek techniczny), w prawym dolnym rogu.
+  function drawInstallLegend(lv) {
+    const types = Object.keys(App.INSTALLS).filter(t => lv.installs.some(o => o.type === t && E.instVisible(o)));
+    if (!types.length) return;
+    const rowH = 22, wBox = 210, hBox = 26 + types.length * rowH, x0 = W - wBox - 12, y0 = H - hBox - 12;
+    screen();
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 1;
+    ctx.fillRect(x0, y0, wBox, hBox);
+    ctx.strokeRect(x0 + 0.5, y0 + 0.5, wBox, hBox);
+    ctx.fillStyle = '#111';
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('LEGENDA – INSTALACJE', x0 + 10, y0 + 13);
+    types.forEach((t, k) => {
+      const cy = y0 + 26 + k * rowH + rowH / 2;
+      screen();
+      ctx.fillStyle = '#111';
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(App.installDef(t).name, x0 + 52, cy);
+      world();
+      const d = App.installDef(t);
+      if (d.shape === 'run') {
+        const a = E.toWorld(x0 + 10, cy), b = E.toWorld(x0 + 42, cy);
+        App.drawInstall(ctx, lv, { type: t, pts: [a, b] }, px(1), false);
+      } else if (t === 'riser') {
+        // Pion rysowany w skali rzutu – w legendzie stały symbol kółka.
+        screen();
+        ctx.beginPath(); ctx.arc(x0 + 26, cy, 7, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(87,83,78,0.25)'; ctx.fill();
+        ctx.strokeStyle = App.INSTALL_SYS.kan.color; ctx.lineWidth = 1.6; ctx.stroke();
+        world();
+      } else {
+        // Symbol na ścianie rysowany „licem” w dół wiersza – kreska ściany pod spodem.
+        const c = E.toWorld(x0 + 26, cy + (d.shape === 'wall' ? 7 : 0));
+        App.drawInstall(ctx, lv, { type: t, x: c.x, y: c.y }, px(1), false);
+        if (d.shape === 'wall') { ctx.strokeStyle = '#111'; ctx.lineWidth = px(1); const l = E.toWorld(x0 + 14, cy + 7), r = E.toWorld(x0 + 38, cy + 7); line(l, r); }
+      }
+    });
+    world();
   }
   const inRoom = (lv, q) => lv.rooms.some(r => G.inside(q, r.pts));
   function drawTechDims(lv) {
@@ -1398,6 +1515,10 @@
     ctx.font = '11px system-ui, sans-serif';
     ctx.fillStyle = '#374151';
     ctx.fillText(`poziom podłogi ${el > 0 ? '+' : el < 0 ? '' : '±'}${e} m · wys. kondygnacji ${fmtCm(lv.height)} cm · wymiary w cm`, 14, 30);
+    if (E.instOn() && lv.installs.some(E.instVisible)) {
+      const l = E.instLayer === 'el' ? 'elektryczna' : E.instLayer === 'wk' ? 'wodno-kanalizacyjna' : 'elektryczna i wodno-kanalizacyjna';
+      ctx.fillText(`instalacja ${l}`, 14, 46);
+    }
     world();
   }
 

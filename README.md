@@ -34,6 +34,13 @@ Przełącznik w prawym górnym rogu: **Rzut 2D**, **2D + 3D** albo **Widok 3D**.
   - wysokości pomieszczeń i nagłówek rysunku.
 - **Instalacje** wybierasz z listy: ukryte / wszystkie / elektryczna / wod-kan.
 - **Tylko instalacje** zostawia ściany jako jasny podkład i pokazuje na nim same przewody i rury.
+- **Wymiary instalacji** (widoczne, gdy instalacje są pokazane):
+  - przy przewodach i rurach: długość całej trasy, długości odcinków i wysokość;
+  - przy punktach na ścianie: odległość wzdłuż ściany do najbliższej ściany poprzecznej i wysokość;
+  - przy punktach na suficie i pionach: odległości od najbliższych ścian w obu kierunkach.
+
+  Wysokość w dolnej połowie kondygnacji podaje się od podłogi (`h=30`), a w górnej od sufitu (`30 od sufitu`).
+- Na rysunku technicznym widoczne instalacje dostają w nagłówku nazwę branży, a w prawym dolnym rogu legendę użytych symboli.
 
 **Widok 3D**
 - Lewy przycisk obraca, prawy przesuwa, kółko przybliża. Przyciski **Perspektywa** i **Z góry** ustawiają kamerę.

@@ -944,9 +944,13 @@
     $('#sel-3d-inst').onchange = (e) => { delete App.project.settings.xray3d; set3d('inst3d', e.target.value); };
     $('#chk-3d-instonly').onchange = (e) => set3d('instOnly3d', e.target.checked);
     $('#chk-2d-instonly').onchange = (e) => E.setInstOnly(e.target.checked);
+    $('#chk-2d-instdims').onchange = (e) => E.setInstDims(e.target.checked);
     $('#chk-2d-tech').onchange = (e) => E.setTech(e.target.checked);
     $('#sel-2d-inst').onchange = (e) => E.setInstLayer(e.target.value);
-    const sync2d = () => { $('#chk-2d-tech').checked = E.tech; $('#sel-2d-inst').value = E.instLayer; $('#chk-2d-instonly').checked = E.instOnly; };
+    const sync2d = () => { $('#chk-2d-tech').checked = E.tech; $('#sel-2d-inst').value = E.instLayer; $('#chk-2d-instonly').checked = E.instOnly;
+      $('#chk-2d-instdims').checked = E.instDims;
+      // Wymiary instalacji mają sens tylko przy widocznych instalacjach.
+      $('#chk-2d-instdims').closest('label').style.display = E.instOn() ? '' : 'none'; };
     App.on('view2d', sync2d);
     sync2d();
     const sync3d = () => {
