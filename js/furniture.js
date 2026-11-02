@@ -9,6 +9,7 @@ window.App = window.App || {};
   const MATS = {
     white: '#f4f4f2', metal: '#a9aeb5', dark: '#2b2b2e', top: '#5b5048', glass: '#bcd4e6', glassDark: '#1f2933',
     linen: '#f2efe8', pillow: '#ffffff', duvet: '#9fb4c7', screen: '#111827', steel: '#c4c8cc', leaf: '#4d7c3a', pot: '#a0522d',
+    carGlass: '#1d2731', tire: '#1b1b1d', light: '#e8edf2', tail: '#a3171b',
   };
   App.FURNITURE_MATS = MATS;
 
@@ -17,6 +18,9 @@ window.App = window.App || {};
   const B = (a0, a1, b0, b1, z0, z1, m = 'main') => ({ b: [a0, a1, b0, b1, z0, z1], m });
   const C = (a, b, r, z0, z1, m = 'main', s = 1) => ({ c: [a, b, r, z0, z1], m, s });
   const D = (a, z, r, b0, b1, m = 'main') => ({ d: [a, z, r, b0, b1], m });
+  // Profil boczny – wielokąt [[a, z], …] wyciągnięty w głąb od b0 do b1; bv – promień zaokrąglenia krawędzi w 3D,
+  // r – promień narożników na rzucie z góry.
+  const P = (pts, b0, b1, m = 'main', o = {}) => Object.assign({ p: pts, w: [b0, b1], m }, o);
   const legs = (hl, hw, z1, s = 5, inset = 3, m = 'main2') => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) =>
     B(i * (hl - inset) - s / 2, i * (hl - inset) + s / 2, j * (hw - inset) - s / 2, j * (hw - inset) + s / 2, 0, z1, m));
   // Podział szerokości na n równych pól (drzwi, szuflady, poduchy).
@@ -72,6 +76,60 @@ window.App = window.App || {};
     return [...parts, B(-hl, hl, -hw, hw + 2, H - 4, H, 'top')];
   }
   const faucet = (b, z) => [C(0, b, 1.5, z, z + 28, 'metal'), B(-1.2, 1.2, b, b + 17, z + 25, z + 28, 'metal')];
+
+  // ---------- Samochody ----------
+  // Wymiary z danych technicznych producenta (cm): L0 – długość, W0 – szerokość bez lusterek, H0 – wysokość,
+  // wb – rozstaw osi, fo – zwis przedni, R – promień koła (opona), tw – szerokość opony, track – rozstaw kół.
+  // Profil nadwozia opisany odległościami od przodu (F) i od tyłu (T); przy zmianie wymiarów skaluje się proporcjonalnie.
+  function car(S) {
+    return (L, W, H) => {
+      const sa = L / S.L0, sb = W / S.W0, sz = H / S.H0;
+      const F = (x) => (S.L0 / 2 - x) * sa, T = (x) => (-S.L0 / 2 + x) * sa, Z = (z) => z * sz;
+      const hw = W / 2, R = S.R * sz, fa = F(S.fo), ra = F(S.fo + S.wb), arch = R + 3 * sz, bot = Z(S.floor);
+      // Wnęka koła w profilu: łuk nad osią.
+      const wheelArch = (ax) => {
+        const out = [[ax - arch, bot], [ax - arch, R]];
+        for (let k = 1; k < 8; k++) { const t = Math.PI - k * Math.PI / 8; out.push([ax + arch * Math.cos(t), R + arch * Math.sin(t)]); }
+        return out.concat([[ax + arch, R], [ax + arch, bot]]);
+      };
+      const body = [
+        [T(10), bot], ...wheelArch(ra), ...wheelArch(fa), [F(12), bot], [F(3), Z(30)], [F(0), Z(50)], [F(2), Z(S.hood - 6)], [F(9), Z(S.hood)],
+        [F(S.cowlX * 0.45), Z((S.hood + S.cowlZ) / 2 + 3)], [F(S.cowlX), Z(S.cowlZ)],
+        [T(S.rwX), Z(S.deck)], [T(22), Z(S.deck)], [T(6), Z(S.deck - 4)], [T(1), Z(S.deck - 14)], [T(0), Z(52)], [T(3), Z(30)],
+      ];
+      const belt = Math.min(S.cowlZ, S.deck) - 1;
+      const cabin = [[T(S.rwX), Z(belt)], [F(S.cowlX), Z(belt)], [F(S.roofF - 8), Z(S.H0 - 4)], [F(S.roofF + 14), Z(S.H0)], [T(S.roofT + 10), Z(S.H0)], [T(S.roofT - 14), Z(S.H0 - 5)]];
+      const cw = hw * S.cabin, e = 3 * sz;
+      const roof = [[F(S.roofF), Z(S.H0 - 6)], [F(S.roofF + 14), Z(S.H0)], [T(S.roofT + 10), Z(S.H0)], [T(S.roofT - 2), Z(S.H0 - 6)]];
+      const tb = Math.min(S.track / 2 * sb, hw - S.tw / 2), tw = S.tw * sb, rim = (b0, b1) => b1 > 0 ? [b1 - 0.6, b1 + 0.4] : [b0 - 0.4, b0 + 0.6];
+      const wheels = [fa, ra].flatMap(ax => [-1, 1].flatMap(j => {
+        const b0 = j * tb - tw / 2, b1 = j * tb + tw / 2;
+        return [D(ax, R, R, b0, b1, 'tire'), D(ax, R, R * 0.62, ...rim(b0, b1), 'metal')];
+      }));
+      const bp = (pillarA) => B(pillarA - 4 * sa, pillarA + 4 * sa, -cw - 0.6, cw + 0.6, Z(belt), Z(S.H0 - 5), 'main');
+      return [
+        ...wheels,
+        P(body, -hw, hw, 'main', { paint: true, bv: 6 * sb, r: 22 * sa }),
+        P(cabin, -cw, cw, 'carGlass', { bv: 5 * sb, r: 18 * sa }),
+        P(roof, -cw - 0.5, cw + 0.5, 'main', { paint: true, bv: 4 * sb, r: 18 * sa }),
+        Object.assign(bp((F(S.cowlX) + T(S.rwX)) / 2 + S.bpil * sa), { paint: true }),
+        // Lusterka – wystają poza szerokość nadwozia (szerokość z lusterkami jest większa).
+        ...[-1, 1].map(j => Object.assign(B(F(S.cowlX + 20), F(S.cowlX + 8), j > 0 ? cw : -hw - S.mirror * sb, j > 0 ? hw + S.mirror * sb : -cw, Z(belt + 2), Z(belt + 14)), { paint: true })),
+        // Światła przednie, grill, światła tylne, tablice rejestracyjne.
+        ...[-1, 1].map(j => B(F(10), F(0.5), j > 0 ? hw - 38 * sb : -hw + 8 * sb, j > 0 ? hw - 8 * sb : -hw + 38 * sb, Z(S.hood - 16), Z(S.hood - 5), 'light')),
+        B(F(4), F(-0.4), -S.grill * sb, S.grill * sb, Z(28), Z(S.hood - 8), 'dark'),
+        ...[-1, 1].map(j => B(T(-0.4), T(10), j > 0 ? hw - 42 * sb : -hw + 6 * sb, j > 0 ? hw - 6 * sb : -hw + 42 * sb, Z(S.deck - 22), Z(S.deck - 8), 'tail')),
+        B(F(1), F(-0.8), -26 * sb, 26 * sb, Z(30), Z(41), 'white'),
+        B(T(-0.8), T(2), -26 * sb, 26 * sb, Z(S.deck - 40), Z(S.deck - 29), 'white'),
+      ];
+    };
+  }
+  // Audi A4 B8 sedan (2008): 470,3 × 182,6 × 142,7 cm, rozstaw osi 280,8 cm, opony 225/55 R16.
+  const A4B8 = { L0: 470.3, W0: 182.6, H0: 142.7, wb: 280.8, fo: 89.4, R: 32.7, tw: 22.5, track: 156.4, floor: 17,
+    hood: 74, cowlX: 128, cowlZ: 96, roofF: 210, roofT: 160, rwX: 98, deck: 101, cabin: 0.84, bpil: 18, mirror: 10, grill: 32 };
+  // Škoda Fabia I sedan (2006): 423,2 × 164,6 × 145,1 cm, rozstaw osi 246,2 cm, opony 165/70 R14.
+  const FABIA1 = { L0: 423.2, W0: 164.6, H0: 145.1, wb: 246.2, fo: 73.5, R: 29.3, tw: 16.5, track: 143.5, floor: 16,
+    hood: 76, cowlX: 104, cowlZ: 97, roofF: 172, roofT: 150, rwX: 94, deck: 102, cabin: 0.86, bpil: 10, mirror: 9, grill: 24 };
 
   const CATALOG = [
     // ---------- Pokój i sypialnia ----------
@@ -168,6 +226,11 @@ window.App = window.App || {};
       parts: (L, W, H) => [B(-L / 2, L / 2, -W / 2, W / 2, 0, H), B(-L / 2 + 0.3, L / 2 - 0.3, W / 2, W / 2 + 0.5, H - 12, H - 1, 'steel'),
         D(0, H * 0.43, L * 0.33, W / 2, W / 2 + 2, 'white'), D(L / 2 - 10, H - 6.5, 3, W / 2 + 0.5, W / 2 + 2, 'dark')] },
 
+    // ---------- Garaż ----------
+    // Auta stoją wzdłuż szerokości (l = długość auta, w = szerokość), przodem w stronę +l.
+    { id: 'audiA4B8', cat: 'Garaż', name: 'Audi A4 B8 sedan (2008)', l: 470.3, w: 182.6, h: 142.7, color: '#8e959c', free: true, parts: car(A4B8) },
+    { id: 'fabia1sedan', cat: 'Garaż', name: 'Škoda Fabia sedan (2006)', l: 423.2, w: 164.6, h: 145.1, color: '#2d4a73', free: true, parts: car(FABIA1) },
+
     // ---------- Własne ----------
     { id: 'photo', cat: 'Własne', name: 'Mebel ze zdjęcia', l: 60, w: 60, h: 85, color: '#d9d4cc', photo: true },
     { id: 'model', cat: 'Własne', name: 'Model 3D (.glb)', l: 100, w: 100, h: 100, color: '#c8c8c8', model: true },
@@ -225,6 +288,10 @@ window.App = window.App || {};
         ctx.beginPath();
         if (p.b) ctx.rect(p.b[0], p.b[2], p.b[1] - p.b[0], p.b[3] - p.b[2]);
         else if (p.c) ctx.ellipse(p.c[0], p.c[1], p.c[2], p.c[2] * (p.s || 1), 0, 0, Math.PI * 2);
+        else if (p.p) {
+          const as = p.p.map(q => q[0]), a0 = Math.min(...as), a1 = Math.max(...as), r = Math.min(p.r || 0, (a1 - a0) / 2, (p.w[1] - p.w[0]) / 2);
+          if (ctx.roundRect) ctx.roundRect(a0, p.w[0], a1 - a0, p.w[1] - p.w[0], r); else ctx.rect(a0, p.w[0], a1 - a0, p.w[1] - p.w[0]);
+        }
         else ctx.rect(p.d[0] - p.d[2], p.d[3], 2 * p.d[2], p.d[4] - p.d[3]);
         ctx.fill();
         ctx.stroke();
@@ -243,7 +310,7 @@ window.App = window.App || {};
     }
     ctx.restore();
   };
-  const top = (p) => (p.b ? p.b[5] : p.c ? p.c[4] : p.d[1] + p.d[2]);
+  const top = (p) => (p.b ? p.b[5] : p.c ? p.c[4] : p.p ? Math.max(...p.p.map(q => q[1])) : p.d[1] + p.d[2]);
 
   // Miniatura do katalogu.
   App.furnitureThumb = (def, size = 44) => {

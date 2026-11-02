@@ -705,6 +705,8 @@
   const FURN_OPTS = {
     metal: { metalness: 0.6, roughness: 0.35 }, steel: { metalness: 0.5, roughness: 0.4 }, screen: { roughness: 0.2 }, glassDark: { roughness: 0.15 },
     glass: { transparent: true, opacity: 0.3, roughness: 0.1, depthWrite: false }, white: { roughness: 0.4 },
+    paint: { metalness: 0.35, roughness: 0.35 }, carGlass: { metalness: 0.3, roughness: 0.1 }, tire: { roughness: 0.95 },
+    light: { emissive: '#3a3a30', roughness: 0.2 }, tail: { emissive: '#4a0a0a', roughness: 0.3 },
   };
   function buildFurniture(parent, o, lv, i) {
     // Mebel stoi na podłodze pokoju (także obniżonej), z – wysokość nad podłogą (szafki wiszące, telewizor).
@@ -716,7 +718,7 @@
     parent.add(g);
     if (App.furnitureDef(o.type).model) return buildModel(g, o);
     App.furnitureParts(o).forEach(p => {
-      const color = App.furnitureColor(p.m, o), material = mat(color, FURN_OPTS[p.m] || {});
+      const color = App.furnitureColor(p.m, o), material = mat(color, FURN_OPTS[p.paint ? 'paint' : p.m] || {});
       let m;
       if (p.b) {
         const [a0, a1, b0, b1, z0, z1] = p.b;
@@ -728,6 +730,18 @@
         m = mesh(new THREE.CylinderGeometry(r, r, z1 - z0, 32), material, g);
         m.position.set(a, (z0 + z1) / 2, b);
         m.scale.z = p.s || 1;
+      } else if (p.p) {
+        // Profil boczny (a, z) wyciągnięty w głąb od b0 do b1, z zaokrąglonymi krawędziami (karoseria auta).
+        // Zaokrąglenie powiększa obrys o bv – profil zmniejszony o tyle, żeby wymiary zostały prawdziwe.
+        const [b0, b1] = p.w, bv = Math.min(p.bv == null ? 2 : p.bv, (b1 - b0) / 4);
+        const as = p.p.map(q => q[0]), zs = p.p.map(q => q[1]);
+        const ca = (Math.min(...as) + Math.max(...as)) / 2, ha = (Math.max(...as) - Math.min(...as)) / 2;
+        const cz = (Math.min(...zs) + Math.max(...zs)) / 2, hz = (Math.max(...zs) - Math.min(...zs)) / 2;
+        const ka = ha > bv ? (ha - bv) / ha : 1, kz = hz > bv ? (hz - bv) / hz : 1;
+        const shape = new THREE.Shape(p.p.map(([x, z]) => new THREE.Vector2(ca + (x - ca) * ka, cz + (z - cz) * kz)));
+        const geo = new THREE.ExtrudeGeometry(shape, { depth: Math.max(0.1, b1 - b0 - 2 * bv), bevelEnabled: bv > 0, bevelThickness: bv, bevelSize: bv, bevelSegments: 3, curveSegments: 4 });
+        m = mesh(geo, material, g);
+        m.position.z = b0 + bv;
       } else {
         const [a, z, r, b0, b1] = p.d;
         m = mesh(new THREE.CylinderGeometry(r, r, b1 - b0, 32), material, g);

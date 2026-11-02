@@ -101,7 +101,12 @@ Do wyboru:
 
 ## Meble
 
-Narzędzie **Meble (E)** otwiera katalog z kategoriami Pokój, Kuchnia, Łazienka i Własne.
+Narzędzie **Meble (E)** otwiera katalog z kategoriami Pokój, Kuchnia, Łazienka, Garaż i Własne.
+- **Garaż**: samochody w rzeczywistych wymiarach (długość × szerokość bez lusterek × wysokość):
+  - Audi A4 B8 sedan (2008): 470,3 × 182,6 × 142,7 cm, rozstaw osi 280,8 cm;
+  - Škoda Fabia sedan (2006, pierwsza generacja): 423,2 × 164,6 × 145,1 cm, rozstaw osi 246,2 cm.
+
+  Lusterka wystają poza obrys, tak jak w prawdziwym aucie. Przy zmianie wymiarów bryła skaluje się proporcjonalnie.
 - Mebel przy ścianie sam przylega do niej tyłem. Shift wyłącza to przyleganie.
 - We Właściwościach zmieniasz wymiary, kolory, wysokość zawieszenia i teksturę.
 - **Mebel ze zdjęcia**: zdjęcie frontu nakładane na bryłę o podanych wymiarach.
