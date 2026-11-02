@@ -61,6 +61,7 @@
     App.on('texload', () => { dirty = true; });
     App.on('select', highlight);
     initPicking();
+    initWalk();
     V.ready = true;
     resize();
     loop();
@@ -82,14 +83,19 @@
 
   function loop() {
     requestAnimationFrame(loop);
+    const now = performance.now(), dt = Math.min(0.1, (now - (loop.t || now)) / 1000);
+    loop.t = now;
     if (!V.visible) return;
     if (dirty) {
       dirty = false;
       rebuild();
       highlight();
-      if (!framed) { V.frame(); framed = true; }
+      // Nowe obiekty muszą mieć policzone położenie przed testami kolizji spaceru w tej samej klatce.
+      scene.updateMatrixWorld();
+      if (!framed && !W.on) { V.frame(); framed = true; }
     }
-    controls.update();
+    if (W.on) walkStep(dt);
+    else controls.update();
     renderer.render(scene, camera);
   }
 
@@ -282,7 +288,8 @@
   function rebuild() {
     clear();
     const p = App.project, s = p.settings;
-    const mode = s.show3d || 'all', n = p.levels.length;
+    // Na spacerze widać wszystkie kondygnacje – można przejść schodami piętro wyżej.
+    const mode = W.on ? 'all' : s.show3d || 'all', n = p.levels.length;
     const first = mode === 'only' ? p.current : 0, last = mode === 'all' ? n - 1 : p.current;
     const roofs = s.roofs3d !== false;
     // Instalacje: ściany półprzezroczyste, widać przewody i rury w ich wnętrzu (wszystkie albo jednej branży).
@@ -570,6 +577,13 @@
     box(g, frame, a, a + fw, 0, top, fd);
     box(g, frame, b - fw, b, 0, top, fd);
     box(g, frame, a + fw, b - fw, top - fw, top, fd);
+    if (W.on) {
+      // Na spacerze drzwi otwarte: skrzydło prostopadle do ściany, po stronie otwierania (jak łuk na rzucie).
+      const L = b - a - 2 * fw, sd = op.o.side ? 1 : -1;
+      const u0 = op.o.flip ? b - fw - 4 : a + fw;
+      box(g, leaf, u0, u0 + 4, 0, top - fw, L, sd * (fd / 2 + L / 2));
+      return;
+    }
     box(g, leaf, a + fw, b - fw, 0, top - fw, 4);
     const hx = op.o.flip ? a + fw + 8 : b - fw - 8;
     box(g, mat('#c9c9c9', { metalness: 0.7, roughness: 0.3 }), hx - 6, hx + 6, 100, 104, 10);
@@ -605,6 +619,7 @@
     const geo = new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false });
     geo.rotateX(Math.PI / 2);
     const m = mesh(geo, mat(color || '#dddddd'), parent);
+    m.userData.slab = true; // na spacerze krawędź stropu (otwór nad schodami) nie zatrzymuje
     m.position.y = lift;
   }
 
@@ -1179,6 +1194,221 @@
     Object.assign(sun.shadow.camera, { left: -r, right: r, top: r, bottom: -r, far: size * 4 + 50 });
     sun.shadow.camera.updateProjectionMatrix();
   }
+  // ---------- Spacer (widok z oczu człowieka) ----------
+  // Pozycja stóp w metrach (świat), kierunek patrzenia yaw/pitch. Ściany, meble i okna zatrzymują,
+  // stopnie do 45 cm pokonuje się krokiem – po schodach wchodzi się na wyższą kondygnację.
+  const W = { on: false, pos: null, yaw: 0, pitch: 0, keys: new Set(), saved: null, goal: null, sent: '' };
+  const EYE = 1.65, STEP = 0.45, RADIUS = 0.28, BODY = [0.5, 0.8, 1.1, 1.6];
+  V.walking = () => W.on;
+  const caster = () => { const r = new THREE.Raycaster(); r.firstHitOnly = true; return r; };
+  const upNormal = (h) => h.face && h.face.normal.clone().transformDirection(h.object.matrixWorld).y;
+  // Najwyższa pozioma powierzchnia pod punktem (podłoga, stopień, teren, chodnik) – rzędna w metrach.
+  function floorBelow(x, z, fromY) {
+    const r = caster();
+    r.set(new THREE.Vector3(x, fromY, z), new THREE.Vector3(0, -1, 0));
+    r.far = 60;
+    for (const h of r.intersectObjects([root, terrain], true)) {
+      if (!h.object.isMesh || !h.object.visible) continue;
+      if (upNormal(h) > 0.5) return h.point.y;
+    }
+    return null;
+  }
+  // Czy ruch o d (metry) w kierunku dir koliduje z czymś na wysokości kolan, bioder, piersi lub głowy.
+  function blocked(pos, dir, d) {
+    const r = caster();
+    r.far = d + RADIUS;
+    for (const hgt of BODY) {
+      r.set(new THREE.Vector3(pos.x, pos.y + hgt, pos.z), dir);
+      if (r.intersectObject(root, true).some(h => h.object.isMesh && h.object.visible && !h.object.userData.slab)) return true;
+    }
+    return false;
+  }
+  // Ruch dzielony na krótkie kroki (przy niskiej liczbie klatek jeden skok nie wejdzie w ścianę ani w stopień).
+  function tryMove(dx, dz) {
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-5) return false;
+    const n = Math.ceil(len / 0.05);
+    let ok = false;
+    for (let k = 0; k < n; k++) if (moveOnce(dx / n, dz / n)) ok = true; else break;
+    return ok;
+  }
+  function moveOnce(dx, dz) {
+    const len = Math.hypot(dx, dz), feet = new THREE.Vector3(W.pos.x, W.target, W.pos.z);
+    for (const [mx, mz] of [[dx, dz], [dx, 0], [0, dz]]) {
+      const l = Math.hypot(mx, mz);
+      if (l < len * 0.2) continue;
+      const dir = new THREE.Vector3(mx / l, 0, mz / l);
+      if (blocked(feet, dir, l)) continue;
+      // Krok w górę najwyżej o STEP, w dół – dowolnie (zejście, upadek z krawędzi).
+      const f = floorBelow(W.pos.x + mx, W.pos.z + mz, W.target + STEP);
+      if (f == null) continue;
+      W.pos.x += mx; W.pos.z += mz;
+      W.target = f;
+      return true;
+    }
+    return false;
+  }
+  function walkStep(dt) {
+    const k = W.keys, run = k.has('ShiftLeft') || k.has('ShiftRight');
+    const speed = (run ? 3.5 : 1.5) * dt;
+    if (k.has('ArrowLeft') || k.has('KeyQ')) W.yaw += 1.8 * dt;
+    if (k.has('ArrowRight') || k.has('KeyE')) W.yaw -= 1.8 * dt;
+    let f = 0, sd = 0;
+    if (k.has('KeyW') || k.has('ArrowUp')) f += 1;
+    if (k.has('KeyS') || k.has('ArrowDown')) f -= 1;
+    if (k.has('KeyD')) sd += 1;
+    if (k.has('KeyA')) sd -= 1;
+    const fx = -Math.sin(W.yaw), fz = -Math.cos(W.yaw), rx = -fz, rz = fx;
+    if (f || sd) {
+      W.goal = null;
+      const l = Math.hypot(f, sd);
+      tryMove((fx * f + rx * sd) / l * speed, (fz * f + rz * sd) / l * speed);
+    } else if (W.goal) {
+      // Dwuklik: przejście do wskazanego miejsca.
+      const dx = W.goal.x - W.pos.x, dz = W.goal.z - W.pos.z, d = Math.hypot(dx, dz);
+      if (d < 0.05 || !tryMove(dx / d * Math.min(d, speed * 1.6), dz / d * Math.min(d, speed * 1.6))) W.goal = null;
+    }
+    {
+      const dy = W.target - W.pos.y;
+      W.pos.y += Math.abs(dy) < 0.01 ? dy : dy * Math.min(1, dt * (dy > 0 ? 14 : 8));
+    }
+    camera.position.set(W.pos.x, W.pos.y + EYE, W.pos.z);
+    camera.rotation.set(W.pitch, W.yaw, 0, 'YXZ');
+    sendWalker();
+  }
+  // Kondygnacja, na której stoi człowiek – do znacznika na rzucie i przełączenia rzutu.
+  function walkerLevel() {
+    const p = App.project, cm = W.pos.y * 100 + 40;
+    let lv = 0;
+    p.levels.forEach((_, i) => { if (App.elevation(i) <= cm) lv = i; });
+    if (p.levels.every((_, i) => App.elevation(i) > cm)) lv = p.levels.reduce((m, _, i) => App.elevation(i) < App.elevation(m) ? i : m, 0);
+    return lv;
+  }
+  function sendWalker() {
+    const level = walkerLevel();
+    const w = { x: Math.round(W.pos.x * 100), y: Math.round(W.pos.z * 100), yaw: W.yaw, fov: camera.fov * camera.aspect, level };
+    const key = `${w.x},${w.y},${w.yaw.toFixed(2)},${level}`;
+    if (key === W.sent) return;
+    W.sent = key;
+    App.walker = w;
+    if (level !== App.project.current) App.setLevel(level);
+    App.emit('walker');
+  }
+  // Miejsce upuszczenia ludzika: punkt na rzędnej bieżącej kondygnacji pod kursorem, stopy na podłodze w tym miejscu.
+  V.dropTarget = (clientX, clientY) => {
+    if (!V.ready) return null;
+    const r = renderer.domElement.getBoundingClientRect();
+    if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) return null;
+    const ray = caster();
+    ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), camera);
+    const p = App.project, ey = App.elevation(p.current) / 100;
+    const pt = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -ey), new THREE.Vector3());
+    if (!pt || pt.distanceTo(camera.position) > 300) return null;
+    const f = floorBelow(pt.x, pt.z, ey + 1.2);
+    pt.y = f == null ? ey : f;
+    return pt;
+  };
+  let marker = null;
+  V.showDrop = (pt) => {
+    if (!V.ready) return;
+    if (!marker) {
+      marker = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.34, 40), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false, transparent: true, opacity: 0.9 }));
+      marker.rotation.x = -Math.PI / 2;
+      marker.renderOrder = 10;
+      scene.add(marker);
+    }
+    marker.visible = !!pt;
+    if (pt) marker.position.set(pt.x, pt.y + 0.02, pt.z);
+  };
+  V.walkStart = (pt, yaw) => {
+    if (!V.ready || !pt) return;
+    V.showDrop(null);
+    if (!W.on) {
+      W.saved = { pos: camera.position.clone(), target: controls.target.clone(), fov: camera.fov };
+      // Patrzymy w tę stronę, w którą patrzyła kamera.
+      const d = controls.target.clone().sub(camera.position);
+      W.yaw = Math.atan2(-d.x, -d.z);
+    }
+    if (yaw != null) W.yaw = yaw;
+    W.pitch = 0;
+    W.on = true;
+    W.goal = null;
+    W.pos = pt.clone();
+    const f = floorBelow(pt.x, pt.z, pt.y + STEP);
+    W.target = f == null ? pt.y : f;
+    controls.enabled = false;
+    camera.fov = 70;
+    camera.near = 0.05;
+    camera.updateProjectionMatrix();
+    dirty = true;
+    renderer.domElement.focus && renderer.domElement.focus();
+    App.emit('walk', true);
+  };
+  V.walkStop = () => {
+    if (!W.on) return;
+    W.on = false;
+    W.keys.clear();
+    const s = W.saved;
+    camera.position.copy(s.pos);
+    controls.target.copy(s.target);
+    camera.fov = s.fov;
+    camera.near = 0.1;
+    camera.updateProjectionMatrix();
+    controls.enabled = true;
+    App.walker = null;
+    W.sent = '';
+    dirty = true;
+    App.emit('walker');
+    App.emit('walk', false);
+  };
+  function initWalk() {
+    const el = renderer.domElement;
+    let look = null;
+    el.addEventListener('pointerdown', (e) => {
+      if (!W.on) return;
+      look = { x: e.clientX, y: e.clientY, yaw: W.yaw, pitch: W.pitch };
+      el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!W.on || !look || !e.buttons) return;
+      // Jak w Street View: przeciąganie „chwyta” obraz.
+      const k = (camera.fov * Math.PI / 180) / el.clientHeight;
+      W.yaw = look.yaw + (e.clientX - look.x) * k;
+      W.pitch = G.clamp(look.pitch + (e.clientY - look.y) * k, -1.45, 1.45);
+    });
+    el.addEventListener('pointerup', () => { look = null; });
+    el.addEventListener('contextmenu', (e) => { if (W.on) e.preventDefault(); });
+    el.addEventListener('wheel', (e) => {
+      if (!W.on) return;
+      e.preventDefault();
+      camera.fov = G.clamp(camera.fov + Math.sign(e.deltaY) * 5, 25, 95);
+      camera.updateProjectionMatrix();
+    }, { passive: false });
+    el.addEventListener('dblclick', (e) => {
+      if (!W.on) return;
+      const r = el.getBoundingClientRect(), ray = caster();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+      const h = ray.intersectObjects([root, terrain], true).find(x => x.object.isMesh && x.object.visible);
+      if (!h) return;
+      if (upNormal(h) > 0.5) W.goal = h.point.clone();
+      else W.goal = h.point.clone().addScaledVector(ray.ray.direction, -0.4);
+    });
+    // Klawisze ruchu przechwytywane przed skrótami edytora (W, S, A, D, Q, E, strzałki).
+    const MOVE = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight']);
+    window.addEventListener('keydown', (e) => {
+      if (!W.on || !V.visible || e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.key === 'Escape') { V.walkStop(); }
+      else if (MOVE.has(e.code)) W.keys.add(e.code);
+      else return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+    window.addEventListener('keyup', (e) => { W.keys.delete(e.code); });
+    window.addEventListener('blur', () => W.keys.clear());
+  }
+
   V.screenshot = () => {
     if (!V.ready) return null;
     renderer.render(scene, camera);

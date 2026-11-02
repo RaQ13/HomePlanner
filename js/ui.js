@@ -980,15 +980,61 @@
     $('#btn-undo').onclick = App.undo;
     $('#btn-redo').onclick = App.redo;
     $('#btn-fit').onclick = E.fit;
-    $('#btn-3d-frame').onclick = App.view3d.frame;
+    const V3 = App.view3d;
+    $('#btn-3d-frame').onclick = () => { V3.walkStop(); V3.frame(); };
     const pickBtn = $('#btn-3d-pick');
+    const hint3d = () => {
+      const on = V3.pick;
+      $('#hint3d').textContent = V3.walking()
+        ? 'Spacer: W/S lub ↑/↓ – naprzód/wstecz · A/D – w bok · ←/→ lub Q/E – obrót · Shift – bieg · przeciąganie – rozglądanie · dwuklik – przejdź tam · kółko – przybliżenie · Esc – koniec'
+        : on ? 'Kliknij element, aby go zaznaczyć · przeciąganie – obrót · prawy – przesuw · kółko – zoom'
+          : 'Lewy przycisk – obrót · prawy – przesuw · kółko – zoom · ludzik w rogu – spacer po domu';
+    };
     const setPick = (on) => {
-      App.view3d.setPick(on);
+      V3.setPick(on);
       pickBtn.classList.toggle('active', on);
-      $('#hint3d').textContent = on ? 'Kliknij element, aby go zaznaczyć · przeciąganie – obrót · prawy – przesuw · kółko – zoom'
-        : 'Lewy przycisk – obrót · prawy – przesuw · kółko – zoom';
+      hint3d();
       try { localStorage.setItem('planer.pick3d', on ? '1' : ''); } catch (e) { /* bez zapisu */ }
     };
+    // Spacer: ludzika przeciąga się na widok 3D (jak w Street View); kliknięcie – w środek widoku.
+    const peg = $('#pegman');
+    peg.onpointerdown = (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const r0 = peg.getBoundingClientRect(), off = { x: e.clientX - r0.left, y: e.clientY - r0.top };
+      const start = { x: e.clientX, y: e.clientY };
+      let moved = false, pt = null;
+      const move = (ev) => {
+        if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 4) return;
+        moved = true;
+        peg.classList.add('dragging');
+        peg.style.transform = `translate(${ev.clientX - start.x}px, ${ev.clientY - start.y}px)`;
+        // Stopy ludzika (dół ikony) wskazują miejsce.
+        pt = V3.dropTarget(ev.clientX - off.x + r0.width / 2, ev.clientY - off.y + r0.height - 6);
+        V3.showDrop(pt);
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        peg.classList.remove('dragging');
+        peg.style.transform = '';
+        V3.showDrop(null);
+        if (!moved) {
+          const r = $('#view3d').getBoundingClientRect();
+          pt = V3.dropTarget(r.left + r.width / 2, r.top + r.height / 2);
+        }
+        if (pt) V3.walkStart(pt);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    };
+    $('#btn-walk-exit').onclick = V3.walkStop;
+    App.on('walk', (on) => {
+      peg.hidden = on;
+      $('#btn-walk-exit').hidden = !on;
+      $('#view3d').classList.toggle('walking', on);
+      hint3d();
+    });
     pickBtn.onclick = () => setPick(!App.view3d.pick);
     try { setPick(localStorage.getItem('planer.pick3d') === '1'); } catch (e) { setPick(false); }
     $('#chk-attic').onchange = (e) => toggleAttic(e.target.checked);
@@ -1033,7 +1079,7 @@
     App.on('change', sync3d);
     App.on('load', sync3d);
     sync3d();
-    $('#btn-3d-top').onclick = App.view3d.top;
+    $('#btn-3d-top').onclick = () => { V3.walkStop(); V3.top(); };
     $('#btn-lv-add').onclick = addLevel;
     $('#btn-lv-del').onclick = removeLevel;
     $('#btn-lv-basement').onclick = addBasement;
@@ -1053,6 +1099,6 @@
     App.on('select', renderProps);
     App.on('clipboard', renderProps);
     App.on('cursor', updateStatus);
-    App.on('load', () => setTimeout(() => { E.fit(); App.view3d.frame(); }, 0));
+    App.on('load', () => setTimeout(() => { App.view3d.walkStop(); E.fit(); App.view3d.frame(); }, 0));
   };
 })(window.App);

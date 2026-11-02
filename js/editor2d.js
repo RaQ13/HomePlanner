@@ -65,6 +65,7 @@
     App.on('texload', E.render);
     App.on('furnitureType', () => { computeSnap(); E.render(); });
     App.on('select', E.render);
+    App.on('walker', E.render);
   };
 
   function resize() {
@@ -1114,7 +1115,31 @@
     const sel = App.find(App.selection);
     if (sel) drawOutline(sel.obj, SEL, 2.5, true);
     drawToolPreview();
+    drawWalker();
     drawScaleBar();
+  }
+
+  // Ludzik ze spaceru w 3D: pozycja i pole widzenia.
+  function drawWalker() {
+    const w = App.walker;
+    if (!w || w.level !== App.project.current) return;
+    const a = Math.atan2(-Math.cos(w.yaw), -Math.sin(w.yaw)), half = Math.min(1.4, w.fov * Math.PI / 360), R = px(70);
+    const grad = ctx.createRadialGradient(w.x, w.y, 0, w.x, w.y, R);
+    grad.addColorStop(0, 'rgba(245,158,11,0.45)');
+    grad.addColorStop(1, 'rgba(245,158,11,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(w.x, w.y);
+    ctx.arc(w.x, w.y, R, a - half, a + half);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, Math.max(px(7), 22), 0, Math.PI * 2);
+    ctx.fillStyle = '#f59e0b';
+    ctx.fill();
+    ctx.lineWidth = px(2);
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
   }
 
   function drawGrid() {

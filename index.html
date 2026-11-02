@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Planer domu</title>
-  <link rel="stylesheet" href="css/style.css?v=20261102b">
+  <link rel="stylesheet" href="css/style.css?v=20261102c">
 </head>
 <body>
   <header class="topbar">
@@ -98,6 +98,13 @@
           <button id="btn-3d-pick" title="Klikaj elementy w 3D, aby je zaznaczyć i edytować">Zaznaczanie</button>
           <button id="btn-3d-frame" title="Widok perspektywiczny">Perspektywa</button>
           <button id="btn-3d-top" title="Widok z góry">Z góry</button>
+          <button id="btn-walk-exit" class="walk-exit" title="Wróć do widoku z zewnątrz (Esc)" hidden>Zakończ spacer</button>
+        </div>
+        <div class="pegman" id="pegman" title="Spacer: przeciągnij ludzika do pokoju albo na działkę, aby zobaczyć wnętrze jego oczami (kliknięcie – w środek widoku)">
+          <svg viewBox="0 0 24 40" width="22" height="36" aria-hidden="true">
+            <circle cx="12" cy="6" r="5"/>
+            <path d="M5 14q0-2 2-2h10q2 0 2 2v11q0 1.5-1.5 1.5H17V38q0 1.5-1.5 1.5h-1.6q-1.4 0-1.4-1.5V29h-1v9q0 1.5-1.4 1.5H8.5Q7 39.5 7 38V26.5h-.5Q5 26.5 5 25z"/>
+          </svg>
         </div>
         <div class="hint3d" id="hint3d">Lewy przycisk – obrót · prawy – przesuw · kółko – zoom</div>
       </div>
@@ -123,14 +130,14 @@
 
   <script src="js/vendor/three.min.js"></script>
   <script src="js/vendor/OrbitControls.js"></script>
-  <script src="js/model.js?v=20261102b"></script>
+  <script src="js/model.js?v=20261102c"></script>
   <script src="js/vendor/GLTFLoader.js"></script>
-  <script src="js/furniture.js?v=20261102b"></script>
-  <script src="js/installs.js?v=20261102b"></script>
-  <script src="js/site.js?v=20261102b"></script>
-  <script src="js/editor2d.js?v=20261102b"></script>
-  <script src="js/view3d.js?v=20261102b"></script>
-  <script src="js/ui.js?v=20261102b"></script>
-  <script src="js/main.js?v=20261102b"></script>
+  <script src="js/furniture.js?v=20261102c"></script>
+  <script src="js/installs.js?v=20261102c"></script>
+  <script src="js/site.js?v=20261102c"></script>
+  <script src="js/editor2d.js?v=20261102c"></script>
+  <script src="js/view3d.js?v=20261102c"></script>
+  <script src="js/ui.js?v=20261102c"></script>
+  <script src="js/main.js?v=20261102c"></script>
 </body>
 </html>

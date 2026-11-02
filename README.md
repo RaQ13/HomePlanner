@@ -49,6 +49,15 @@ Przełącznik w prawym górnym rogu: **Rzut 2D**, **2D + 3D** albo **Widok 3D**.
 - **Tylko instalacje** pokazuje budynek jako przezroczysty szkic, a na nim same instalacje.
 - **Zaznaczanie**: kliknięcie elementu w 3D zaznacza go do edycji.
 
+**Spacer po domu**
+
+Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działkę. Widok przełącza się na oczy człowieka (165 cm nad podłogą). Ludzik ląduje na bieżącej kondygnacji. Samo kliknięcie ludzika stawia go w środku widoku.
+- **W/S** lub **↑/↓** – naprzód i wstecz, **A/D** – krok w bok, **←/→** lub **Q/E** – obrót, **Shift** – bieg.
+- Przeciąganie myszą – rozglądanie się, kółko – przybliżenie, **dwuklik** – przejście we wskazane miejsce.
+- Ściany, meble i okna zatrzymują. Stopnie do 45 cm pokonuje się krokiem, więc po schodach wchodzi się na piętro, a rzut 2D przełącza się na kondygnację, na której stoisz.
+- Na rzucie widać ludzika i jego pole widzenia. Na czas spaceru drzwi są otwarte i widać cały dom.
+- **Esc** albo **Zakończ spacer** przywraca poprzedni widok.
+
 ## Narzędzia (klawisze)
 
 | Narzędzie | Klawisz | Opis |
