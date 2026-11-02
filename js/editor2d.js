@@ -37,6 +37,10 @@
     chimney: 'Kliknij, aby postawić komin. T – obrót o 90°.',
     install: 'Wybierz element instalacji po prawej. Gniazdka, łączniki i podejścia – kliknij przy licu ściany (strona kursora wyznacza lico). Przewody i rury – klikaj kolejne punkty (przyciągają do osi ścian i punktów instalacji), Enter lub prawy klik – zakończ.',
     furniture: 'Wybierz mebel z katalogu po prawej i kliknij na rzucie. Przy ścianie mebel sam obraca się do niej tyłem (Shift – bez przyciągania). T – obrót o 90°, M – odbicie.',
+    plot: 'Klikaj narożniki działki. Kliknij pierwszy punkt lub Enter, aby zamknąć. Wpisz długość boku w cm i Enter. Backspace – cofnij punkt.',
+    path: 'Pas: klikaj kolejne punkty osi chodnika (szerokość po prawej), Enter lub prawy klik – zakończ. Obszar: klikaj narożniki, zamknij pierwszym punktem lub Enterem.',
+    fence: 'Klikaj kolejne punkty ogrodzenia. Kliknięcie pierwszego punktu zamyka ogrodzenie dookoła, Enter lub prawy klik – kończy. Bramę i furtkę wstaw narzędziem Ogród w przerwie płotu.',
+    garden: 'Wybierz roślinę lub wyposażenie ogrodu po prawej i kliknij na rzucie. T – obrót o 90°, M – odbicie.',
     roof: 'Kliknij w pokój, aby przykryć go dachem, albo przeciągnij prostokąt. Dach leży na ścianach bieżącej kondygnacji. T – obrót zaznaczonego dachu.',
   };
   E.hint = () => HINTS[E.tool];
@@ -81,6 +85,7 @@
       l.rooms.forEach(r => pts.push(...r.pts));
       l.objects.forEach(o => pts.push(...G.rectCorners(o)));
       l.roofs.forEach(o => pts.push(...G.rectCorners(o)));
+      [...(l.plots || []), ...(l.paths || []), ...(l.fences || [])].forEach(o => pts.push(...o.pts));
     });
     if (!W || !H) return;
     if (!pts.length) { E.scale = 0.6; E.ox = 80; E.oy = 80; E.render(); return; }
@@ -102,8 +107,13 @@
     App.emit('cursor');
   };
 
+  // Narzędzia terenu działają na kondygnacji na poziomie terenu (parter).
+  const SITE_TOOLS = ['plot', 'path', 'fence', 'garden'];
+  const POLY_TOOLS = ['poly', 'plot', 'path', 'fence'];
   E.setTool = (id) => {
     E.cancel();
+    const p = App.project;
+    if (SITE_TOOLS.includes(id) && p.current !== (p.ground || 0)) App.setLevel(p.ground || 0);
     E.tool = id;
     E.objRot = 0;
     E.objFlip = false;
@@ -126,8 +136,8 @@
 
   // Zakończenie rysowania (prawy klik / Enter).
   E.finish = () => {
-    if (E.tool === 'poly' && E.poly) {
-      if (E.poly.length >= 3) closePoly(); else E.poly = null;
+    if (POLY_TOOLS.includes(E.tool) && E.poly) {
+      closePoly(false);
     } else if (E.tool === 'wall') {
       E.chain = null;
     } else if (E.tool === 'install' && E.run) {
@@ -147,6 +157,7 @@
     };
     lv.walls.forEach(w => { if (ex && ex.has(w)) return; cand(w.x1, w.y1); cand(w.x2, w.y2); });
     lv.rooms.forEach(r => r.pts.forEach(q => { if (!(ex && ex.has(q))) cand(q.x, q.y); }));
+    [...lv.plots, ...lv.paths, ...lv.fences].forEach(o => o.pts.forEach(q => { if (!(ex && ex.has(q))) cand(q.x, q.y); }));
     const below = App.project.levels[App.project.current - 1];
     if (below) below.walls.forEach(w => { cand(w.x1, w.y1); cand(w.x2, w.y2); });
     (opt.extra || []).forEach(q => cand(q.x, q.y));
@@ -180,6 +191,7 @@
     if (from) align(from, 1.6);
     lv.walls.forEach(w => { if (ex && ex.has(w)) return; align({ x: w.x1, y: w.y1 }); align({ x: w.x2, y: w.y2 }); });
     lv.rooms.forEach(r => r.pts.forEach(q => { if (!(ex && ex.has(q))) align(q); }));
+    [...lv.plots, ...lv.paths, ...lv.fences].forEach(o => o.pts.forEach(q => { if (!(ex && ex.has(q))) align(q); }));
     (opt.extra || []).forEach(q => align(q));
     if (gx) x = gx.x;
     if (gy) y = gy.y;
@@ -190,7 +202,7 @@
   function computeSnap() {
     let from = null, extra = null;
     if (E.tool === 'wall' && E.chain) { from = E.chain[E.chain.length - 1]; extra = E.chain; }
-    if (E.tool === 'poly' && E.poly) { from = E.poly[E.poly.length - 1]; extra = E.poly; }
+    if (E.poly) { from = E.poly[E.poly.length - 1]; extra = E.poly; }
     if ((E.tool === 'room' || E.tool === 'roof') && E.rect) from = E.rect.a;
     if (E.tool === 'install') {
       const d = App.installDef(App.defaults.install.type), g = App.project.settings.grid || 1;
@@ -198,7 +210,7 @@
       E.snap = d.shape === 'run' ? runSnap(E.mouse) : { x: Math.round(E.mouse.x / g) * g, y: Math.round(E.mouse.y / g) * g, kind: 'grid' };
       return;
     }
-    if (E.tool === 'furniture') {
+    if (E.tool === 'furniture' || E.tool === 'garden') {
       const g = App.project.settings.grid || 1;
       E.snap = furnitureSnap() || { x: Math.round(E.mouse.x / g) * g, y: Math.round(E.mouse.y / g) * g, kind: 'grid' };
       return;
@@ -286,6 +298,10 @@
       const c = G.rectCorners(sel.obj);
       for (let k = 0; k < 4; k++) if (G.dist(p, c[k]) < tol) return { type: 'roofCorner', obj: sel.obj, corner: k, select: sel.obj.id };
     }
+    // Wierzchołki zaznaczonej działki, nawierzchni lub ogrodzenia.
+    if (sel && (sel.kind === 'plot' || sel.kind === 'path' || sel.kind === 'fence')) {
+      for (let k = 0; k < sel.obj.pts.length; k++) if (G.dist(p, sel.obj.pts[k]) < tol) return { type: 'polyVertex', obj: sel.obj, k, select: sel.obj.id };
+    }
     if (sel && sel.kind === 'install' && sel.obj.pts) {
       for (let k = 0; k < sel.obj.pts.length; k++) if (G.dist(p, sel.obj.pts[k]) < tol) return { type: 'runVertex', obj: sel.obj, k, select: sel.obj.id };
     }
@@ -326,6 +342,9 @@
       const o = lv.objects[i], q = G.toLocal(o, p);
       if (Math.abs(q.a) <= o.l / 2 && Math.abs(q.b) <= o.w / 2) return { type: 'object', obj: o, select: o.id };
     }
+    for (const o of lv.fences) {
+      if (App.fenceSegments(o).some(([a, b]) => G.project(p, a, b).d < Math.max(tol * 0.8, 6))) return { type: 'polyMove', obj: o, select: o.id };
+    }
     for (const w of lv.walls) {
       const pr = G.project(p, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 });
       if (pr.d < w.t / 2 + tol * 0.5) return { type: 'wall', obj: w, select: w.id };
@@ -340,6 +359,11 @@
     for (const r of lv.roofs) {
       const q = G.toLocal(r, p);
       if (Math.abs(q.a) <= r.l / 2 && Math.abs(q.b) <= r.w / 2) return { type: 'object', obj: r, select: r.id };
+    }
+    // Nawierzchnie i działki – najmniejsza pod kursorem (chodnik leży na działce).
+    for (const list of [lv.paths, lv.plots]) {
+      const hit = list.filter(o => G.inside(p, o.pts)).sort((x, y) => Math.abs(G.area(x.pts)) - Math.abs(G.area(y.pts)))[0];
+      if (hit) return { type: 'polyMove', obj: hit, select: hit.id };
     }
     return null;
   }
@@ -439,6 +463,10 @@
         E.drag = { type: 'run', before, o: hit.obj, pts0: hit.obj.pts.map(q => ({ x: q.x, y: q.y })), start };
       } else if (hit.type === 'runVertex') {
         E.drag = { type: 'runVertex', before, o: hit.obj, k: hit.k };
+      } else if (hit.type === 'polyVertex') {
+        E.drag = { type: 'polyVertex', before, o: hit.obj, k: hit.k };
+      } else if (hit.type === 'polyMove') {
+        E.drag = { type: 'run', before, o: hit.obj, pts0: hit.obj.pts.map(q => ({ x: q.x, y: q.y })), start };
       } else if (hit.type === 'roofCorner') {
         const opp = G.rectCorners(hit.obj)[(hit.corner + 2) % 4];
         E.drag = { type: 'roofCorner', before, o: hit.obj, opp };
@@ -448,7 +476,7 @@
       const d = E.drag;
       if (!d) {
         E.hover = hitTest(E.mouse);
-        canvas.style.cursor = E.space ? 'grab' : E.hover ? (E.hover.type === 'vertex' || E.hover.type === 'roofCorner' || E.hover.type === 'runVertex' ? 'move' : 'pointer') : 'default';
+        canvas.style.cursor = E.space ? 'grab' : E.hover ? (['vertex', 'roofCorner', 'runVertex', 'polyVertex'].includes(E.hover.type) ? 'move' : 'pointer') : 'default';
         return;
       }
       const g = App.project.settings.grid || 1, lv = App.level();
@@ -478,6 +506,10 @@
       } else if (d.type === 'run') {
         const dx = Math.round((E.mouse.x - d.start.x) / g) * g, dy = Math.round((E.mouse.y - d.start.y) / g) * g;
         d.o.pts.forEach((q, k) => { q.x = d.pts0[k].x + dx; q.y = d.pts0[k].y + dy; });
+      } else if (d.type === 'polyVertex') {
+        const s = E.snapPoint(E.mouse, { exclude: new Set([d.o.pts[d.k]]), from: d.o.pts[(d.k + d.o.pts.length - 1) % d.o.pts.length] });
+        E.snap = s;
+        Object.assign(d.o.pts[d.k], { x: s.x, y: s.y });
       } else if (d.type === 'runVertex') {
         const s = runSnap(E.mouse);
         E.snap = s;
@@ -618,14 +650,30 @@
   function addPolyPoint(p) {
     E.typed = '';
     if (E.poly.length >= 3 && G.dist(p, E.poly[0]) < 1) { closePoly(); return; }
-    if (G.dist(p, E.poly[E.poly.length - 1]) < 1) { if (E.poly.length >= 3) closePoly(); return; }
+    if (G.dist(p, E.poly[E.poly.length - 1]) < 1) { if (E.tool === 'fence' || (E.tool === 'path' && App.defaults.path.mode === 'strip')) closePoly(false); else if (E.poly.length >= 3) closePoly(); return; }
     E.poly.push(p);
   }
-  function closePoly() {
-    const pts = E.poly;
+  // Zamknięcie rysowanego wielokąta / łamanej: closed – kliknięto pierwszy punkt.
+  function closePoly(closed = true) {
+    const pts = E.poly, t = E.tool, lv = App.level();
     E.poly = null;
-    if (pts.length >= 3 && Math.abs(G.area(pts)) > 400) createRoom(pts);
+    if (!pts) return;
+    const area = pts.length >= 3 && Math.abs(G.area(pts)) > 400;
+    let obj = null;
+    if (t === 'poly') { if (area) createRoom(pts); return; }
+    if (t === 'plot' && area) obj = App.makePlot(pts, lv.plots.length + 1);
+    if (t === 'path') {
+      const d = App.defaults.path;
+      if (d.mode === 'strip') { if (pts.length >= 2) obj = App.makePath(App.stripPolygon(closed ? [...pts, pts[0]] : pts, d.width), d.kind); }
+      else if (area) obj = App.makePath(pts, d.kind);
+    }
+    if (t === 'fence' && pts.length >= 2) obj = App.makeFence(pts, closed && pts.length >= 3);
+    if (!obj) return;
+    App.edit(() => lv[obj.kind + 's'].push(obj));
+    App.select(obj.id);
   }
+  tools.plot = tools.path = tools.fence = tools.poly;
+  tools.garden = { down() { tools.furniture.down(); } };
 
   function openingTarget(kind) {
     const lv = App.level(), p = E.mouse, d = App.defaults[kind];
@@ -670,7 +718,7 @@
       return o;
     }
     if (kind === 'furniture') {
-      const o = App.makeFurniture(App.defaults.furniture.type, x, y, E.snap && E.snap.rot != null ? E.snap.rot : E.objRot);
+      const o = App.makeFurniture(E.furnType(), x, y, E.snap && E.snap.rot != null ? E.snap.rot : E.objRot);
       o.flip = E.objFlip;
       const md = App.furnitureDef(o.type).model && App.model3d(App.defaults.furniture.model);
       if (md) Object.assign(o, { model: md.id, l: md.l, w: md.w, h: md.h });
@@ -685,9 +733,11 @@
     App.setStairShape(o, d.shape || 'straight');
     return o;
   };
+  // Rodzaj stawianego mebla – narzędzie Ogród ma własny wybór (rośliny, wyposażenie ogrodu, bramy).
+  E.furnType = () => (E.tool === 'garden' ? App.defaults.garden.type : App.defaults.furniture.type);
   // Mebel przy ścianie: tyłem do lica ściany, frontem do kursora (do wnętrza pokoju).
   function furnitureSnap() {
-    const def = App.furnitureDef(App.defaults.furniture.type);
+    const def = App.furnitureDef(E.furnType());
     if (E.shift || def.free) return null;
     let best = null;
     App.level().walls.forEach(w => {
@@ -798,11 +848,11 @@
   }
 
   // ---------- Klawiatura (wywoływana z ui.js) ----------
-  E.typing = () => (E.tool === 'wall' && E.chain) || (E.tool === 'poly' && E.poly);
+  E.typing = () => (E.tool === 'wall' && E.chain) || (POLY_TOOLS.includes(E.tool) && E.poly);
   E.typeKey = (k) => {
     if (k === 'Backspace') {
       if (E.typed) E.typed = E.typed.slice(0, -1);
-      else if (E.tool === 'poly' && E.poly) { E.poly.pop(); if (!E.poly.length) E.poly = null; }
+      else if (E.poly) { E.poly.pop(); if (!E.poly.length) E.poly = null; }
       else return false;
     } else if (k === 'Enter') {
       const len = parseFloat(E.typed.replace(',', '.'));
@@ -853,9 +903,11 @@
     else if (sel.kind === 'object') items.objects.push(o);
     else if (sel.kind === 'roof') items.roofs.push(o);
     else if (sel.kind === 'install') items.installs = [o];
+    else if (sel.kind === 'plot' || sel.kind === 'path' || sel.kind === 'fence') items[sel.kind + 's'] = [o];
     if (sel.kind === 'wall') items.openings = lv.openings.filter(op => op.wallId === o.id);
     // Punkt odniesienia – środek obrysu; przy wklejaniu trafia pod kursor.
-    const pts = [...items.walls.flatMap(w => [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }]), ...items.rooms.flatMap(r => r.pts), ...items.objects, ...items.roofs];
+    const pts = [...items.walls.flatMap(w => [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }]), ...items.rooms.flatMap(r => r.pts), ...items.objects, ...items.roofs,
+      ...['plots', 'paths', 'fences'].flatMap(k => (items[k] || []).flatMap(o => o.pts))];
     let ref = null;
     if (pts.length) {
       const xs = pts.map(q => q.x), ys = pts.map(q => q.y);
@@ -917,9 +969,10 @@
       it.rooms.forEach(r => { fresh(r); r.pts.forEach(q => { q.x += dx; q.y += dy; }); lv.rooms.push(r); });
       it.objects.forEach(o => { fresh(o); o.x += dx; o.y += dy; lv.objects.push(o); });
       it.roofs.forEach(r => { fresh(r); r.x += dx; r.y += dy; lv.roofs.push(r); });
+      ['plots', 'paths', 'fences'].forEach(k => (it[k] || []).forEach(o => { fresh(o); o.pts.forEach(q => { q.x += dx; q.y += dy; }); lv[k].push(o); }));
     });
     cb.pastes++;
-    const main = it.rooms[0] || it.walls[0] || it.objects[0] || it.roofs[0];
+    const main = it.rooms[0] || it.walls[0] || it.objects[0] || it.roofs[0] || ['plots', 'paths', 'fences'].map(k => (it[k] || [])[0]).find(Boolean);
     if (main) App.select(main.id);
     return true;
   };
@@ -928,7 +981,7 @@
     const sel = App.find(App.selection);
     if (sel && sel.kind === 'object' && (sel.obj.kind === 'stairs' || sel.obj.kind === 'furniture')) {
       App.edit(() => { sel.obj.flip = !sel.obj.flip; });
-    } else if (E.tool === 'stairs' || E.tool === 'furniture') {
+    } else if (E.tool === 'stairs' || E.tool === 'furniture' || E.tool === 'garden') {
       E.objFlip = !E.objFlip;
       E.render();
     }
@@ -937,7 +990,7 @@
     const sel = App.find(App.selection);
     if (sel && (sel.kind === 'object' || sel.kind === 'roof')) {
       App.edit(() => { sel.obj.rot = ((sel.obj.rot + 90) % 360 + 360) % 360; });
-    } else if (E.tool === 'stairs' || E.tool === 'chimney' || E.tool === 'furniture') {
+    } else if (E.tool === 'stairs' || E.tool === 'chimney' || E.tool === 'furniture' || E.tool === 'garden') {
       E.objRot = (E.objRot + 90) % 360;
       E.render();
     }
@@ -1007,6 +1060,7 @@
       ctx.setLineDash([]);
     }
 
+    drawSite(lv, tech);
     lv.rooms.forEach(r => {
       path(r.pts);
       ctx.fillStyle = tech || only ? '#ffffff' : texPattern(r.texFloor) || r.color || '#eee';
@@ -1029,6 +1083,7 @@
       ctx.fill();
     });
     lv.openings.forEach(o => drawOpening(lv, o));
+    lv.fences.forEach(o => drawFence(o, tech));
     // Kominy z niższych kondygnacji przechodzą przez wyższe.
     for (let i = 0; i < p.current && !only; i++) {
       p.levels[i].objects.filter(o => o.kind === 'chimney').forEach(o => drawObject(o, true));
@@ -1051,6 +1106,7 @@
     if (tech) drawTechDims(lv);
     else if (s.dims && !only) lv.walls.forEach(drawWallDim);
     lv.rooms.forEach(r => drawRoomLabel(lv, r));
+    lv.plots.forEach(o => drawPlotLabels(o, tech, s.dims || tech));
     if (E.instOn() && E.instDims) drawInstallDims(lv);
     if (tech) { drawTitle(lv); if (E.instOn()) drawInstallLegend(lv); }
 
@@ -1522,6 +1578,86 @@
     world();
   }
 
+  // ---------- Teren ----------
+  // Działki (teren i granica) i nawierzchnie – pod budynkiem.
+  function drawSite(lv, tech) {
+    lv.plots.forEach(o => {
+      path(o.pts);
+      ctx.fillStyle = tech ? '#ffffff' : texPattern(o.tex) || o.color || '#c9dcaa';
+      ctx.fill();
+    });
+    lv.paths.forEach(o => {
+      path(o.pts);
+      ctx.fillStyle = tech ? '#f3f3f1' : texPattern(o.tex) || o.color;
+      ctx.fill();
+      ctx.strokeStyle = tech ? '#555' : App.shade(o.color || '#999999', 0.7);
+      ctx.lineWidth = px(1);
+      ctx.stroke();
+    });
+    // Granica działki: linia kreska–kropka.
+    lv.plots.forEach(o => {
+      path(o.pts);
+      ctx.strokeStyle = tech ? '#111' : '#2f5d1f';
+      ctx.lineWidth = px(tech ? 1.4 : 1.8);
+      ctx.setLineDash([px(14), px(4), px(2), px(4)]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  }
+  // Ogrodzenie: linia w kolorze wypełnienia, słupki w miejscach jak w 3D.
+  function drawFence(o, tech) {
+    const st = App.fenceStyle(o.style), segs = App.fenceSegments(o), span = Math.max(50, o.span || 250);
+    const col = App.selection === o.id ? SEL : tech ? '#111' : o.color;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = Math.max(px(2.5), o.style === 'solid' ? 20 : 5);
+    const cap = ctx.lineCap;
+    ctx.lineCap = 'butt';
+    if (o.style === 'mesh') ctx.setLineDash([px(6), px(3)]);
+    path(o.pts, !!o.closed);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = col;
+    const P = Math.max(st.post, px(5));
+    segs.forEach(([a, b], k) => {
+      const L = G.dist(a, b), n = Math.max(1, Math.ceil(L / span));
+      for (let j = 0; j <= n; j++) {
+        if (j === n && (k < segs.length - 1 || o.closed)) continue;
+        const t = j / n, x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
+        ctx.fillRect(x - P / 2, y - P / 2, P, P);
+      }
+    });
+    ctx.lineCap = cap;
+  }
+  // Nazwa i powierzchnia działki w jej górnym rogu oraz długości boków na zewnątrz granicy.
+  function drawPlotLabels(o, tech, dims) {
+    const xs = o.pts.map(q => q.x), ys = o.pts.map(q => q.y);
+    const at = { x: Math.min(...xs) + px(16), y: Math.min(...ys) + px(18) };
+    const color = tech ? '#111' : '#2f5d1f';
+    screen();
+    const s0 = E.toScreen(at.x, at.y);
+    ctx.font = '600 12px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    ctx.fillText(o.name || 'Działka', s0.x, s0.y);
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText(App.fmtArea(o.pts), s0.x, s0.y + 15);
+    world();
+    if (!dims) return;
+    const ccw = G.area(o.pts) > 0;
+    o.pts.forEach((a, k) => {
+      const b = o.pts[(k + 1) % o.pts.length], L = G.dist(a, b);
+      if (L * E.scale < 50) return;
+      // Na zewnątrz wielokąta – po stronie przeciwnej do wnętrza.
+      let nx = -(b.y - a.y) / L, ny = (b.x - a.x) / L;
+      if (!ccw) { nx = -nx; ny = -ny; }
+      let ang = Math.atan2(b.y - a.y, b.x - a.x);
+      if (ang > Math.PI / 2 + 1e-3) ang -= Math.PI;
+      if (ang <= -Math.PI / 2 + 1e-3) ang += Math.PI;
+      label((a.x + b.x) / 2 - nx * px(11), (a.y + b.y) / 2 - ny * px(11), fmtM(L), { angle: ang, font: '600 10.5px system-ui, sans-serif', color });
+    });
+  }
+
   function drawRoomLabel(lv, r) {
     if (r.pts.length < 3) return;
     const xs = r.pts.map(p => p.x), size = (Math.max(...xs) - Math.min(...xs)) * E.scale;
@@ -1554,7 +1690,7 @@
       return;
     }
     if (obj.pts) {
-      path(obj.pts); ctx.stroke();
+      path(obj.pts, obj.kind !== 'fence' || obj.closed); ctx.stroke();
       if (handles) obj.pts.forEach(drawHandle);
     } else if (obj.wallId) {
       const g = openingGeom(lv, obj);
@@ -1629,10 +1765,12 @@
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    if (t === 'poly' && E.poly && s) {
-      path([...E.poly, s]);
+    if (POLY_TOOLS.includes(t) && E.poly && s) {
+      const line = t === 'fence' || (t === 'path' && App.defaults.path.mode === 'strip');
+      if (t === 'path' && line) path(App.stripPolygon([...E.poly, s], App.defaults.path.width));
+      else path([...E.poly, s], !line);
       ctx.fillStyle = 'rgba(37,99,235,0.12)';
-      ctx.fill();
+      if (!(t === 'fence')) ctx.fill();
       ctx.strokeStyle = SEL;
       ctx.lineWidth = px(1.5);
       path([...E.poly, s], false); ctx.stroke();
@@ -1657,12 +1795,12 @@
       }
       ctx.globalAlpha = 1;
     }
-    if ((t === 'stairs' || t === 'chimney' || t === 'roofwin' || t === 'dormer' || t === 'furniture') && s && E.inside) {
+    if ((t === 'stairs' || t === 'chimney' || t === 'roofwin' || t === 'dormer' || t === 'furniture' || t === 'garden') && s && E.inside) {
       ctx.globalAlpha = 0.6;
-      drawObject(E.makeObject(t, s.x, s.y), false, (t === 'roofwin' || t === 'dormer') && !App.roofAt(App.project.current, s));
+      drawObject(E.makeObject(t === 'garden' ? 'furniture' : t, s.x, s.y), false, (t === 'roofwin' || t === 'dormer') && !App.roofAt(App.project.current, s));
       ctx.globalAlpha = 1;
     }
-    if (t === 'wall' || t === 'room' || t === 'poly' || t === 'roof') drawSnapMarker();
+    if (t === 'wall' || t === 'room' || t === 'roof' || POLY_TOOLS.includes(t)) drawSnapMarker();
   }
 
   function drawScaleBar() {

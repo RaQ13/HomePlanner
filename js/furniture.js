@@ -10,13 +10,19 @@ window.App = window.App || {};
     white: '#f4f4f2', metal: '#a9aeb5', dark: '#2b2b2e', top: '#5b5048', glass: '#bcd4e6', glassDark: '#1f2933',
     linen: '#f2efe8', pillow: '#ffffff', duvet: '#9fb4c7', screen: '#111827', steel: '#c4c8cc', leaf: '#4d7c3a', pot: '#a0522d',
     carGlass: '#1d2731', tire: '#1b1b1d', light: '#e8edf2', tail: '#a3171b',
+    bark: '#6b4f35', leafDark: '#3c6a2e', conifer: '#2d5634', wood: '#a47a4f', woodDark: '#75532f', water: '#4f9fcc',
+    sand: '#e4d4a6', soil: '#5a4030', stone: '#a8a29e', canvas: '#efe6d2', flower: '#d64f7e', flower2: '#f2c84b',
+    binY: '#e3c13a', binB: '#3b6fb6',
   };
   App.FURNITURE_MATS = MATS;
 
   // Części: box – { b: [a0, a1, b0, b1, z0, z1], m }, walec pionowy – { c: [a, b, r, z0, z1], m, s: skala w osi b },
   // walec skierowany frontem (pokrętła, drzwi pralki) – { d: [a, z, r, b0, b1], m }.
   const B = (a0, a1, b0, b1, z0, z1, m = 'main') => ({ b: [a0, a1, b0, b1, z0, z1], m });
-  const C = (a, b, r, z0, z1, m = 'main', s = 1) => ({ c: [a, b, r, z0, z1], m, s });
+  // Walec może zwężać się ku górze (t – promień górny: stożek, korona iglaka) i mieć mało boków (seg: 4 – ostrosłup).
+  const C = (a, b, r, z0, z1, m = 'main', s = 1, t = null, seg = 0) => Object.assign({ c: [a, b, r, z0, z1], m, s }, t != null ? { t } : {}, seg ? { seg } : {});
+  // Kula / elipsoida – środek (a, b, z), promień r, spłaszczenie w pionie sz i w głąb sb (korony drzew, krzewy).
+  const S = (a, b, z, r, m = 'main', sz = 1, sb = 1) => ({ e: [a, b, z, r], m, sz, sb });
   const D = (a, z, r, b0, b1, m = 'main') => ({ d: [a, z, r, b0, b1], m });
   // Profil boczny – wielokąt [[a, z], …] wyciągnięty w głąb od b0 do b1; bv – promień zaokrąglenia krawędzi w 3D,
   // r – promień narożników na rzucie z góry.
@@ -76,6 +82,16 @@ window.App = window.App || {};
     return [...parts, B(-hl, hl, -hw, hw + 2, H - 4, H, 'top')];
   }
   const faucet = (b, z) => [C(0, b, 1.5, z, z + 28, 'metal'), B(-1.2, 1.2, b, b + 17, z + 25, z + 28, 'metal')];
+
+  // Brama / furtka: słupki na końcach, skrzydła z ramą i pionowymi prętami.
+  function gate(L, W, H, wings) {
+    const p = 12, out = [B(-L / 2, -L / 2 + p, -p / 2, p / 2, 0, H + 10, 'main2'), B(L / 2 - p, L / 2, -p / 2, p / 2, 0, H + 10, 'main2')];
+    split(-L / 2 + p + 1, L / 2 - p - 1, wings).forEach(([a0, a1]) => {
+      out.push(B(a0, a1, -2, 2, 6, 10), B(a0, a1, -2, 2, H - 4, H), B(a0, a0 + 4, -2, 2, 6, H), B(a1 - 4, a1, -2, 2, 6, H));
+      for (let a = a0 + 12; a < a1 - 8; a += 12) out.push(B(a - 1, a + 1, -1, 1, 10, H - 4));
+    });
+    return out;
+  }
 
   // ---------- Samochody ----------
   // Wymiary z danych technicznych producenta (cm): L0 – długość, W0 – szerokość bez lusterek, H0 – wysokość,
@@ -231,6 +247,103 @@ window.App = window.App || {};
     { id: 'audiA4B8', cat: 'Garaż', name: 'Audi A4 B8 sedan (2008)', l: 470.3, w: 182.6, h: 142.7, color: '#8e959c', free: true, parts: car(A4B8) },
     { id: 'fabia1sedan', cat: 'Garaż', name: 'Škoda Fabia sedan (2006)', l: 423.2, w: 164.6, h: 145.1, color: '#2d4a73', free: true, parts: car(FABIA1) },
 
+    // ---------- Rośliny (stoją na terenie) ----------
+    { id: 'treeLeaf', cat: 'Rośliny', site: true, free: true, name: 'Drzewo liściaste', l: 500, w: 500, h: 700, color: '#4d7c3a',
+      parts: (L, W, H) => [C(0, 0, Math.max(8, L * 0.045), 0, H * 0.5, 'bark'), S(0, 0, H * 0.64, L / 2, 'main', H * 0.36 / (L / 2), W / L),
+        S(L * 0.16, -W * 0.12, H * 0.55, L * 0.3, 'leafDark', H * 0.22 / (L * 0.3), W / L), S(-L * 0.14, W * 0.12, H * 0.72, L * 0.28, 'main', H * 0.2 / (L * 0.28), W / L)] },
+    { id: 'treeConifer', cat: 'Rośliny', site: true, free: true, name: 'Świerk', l: 350, w: 350, h: 900, color: '#2d5634',
+      parts: (L, W, H) => [C(0, 0, Math.max(6, L * 0.04), 0, H * 0.22, 'bark'), C(0, 0, L / 2, H * 0.1, H * 0.55, 'main', W / L, L * 0.12),
+        C(0, 0, L * 0.38, H * 0.38, H * 0.8, 'main', W / L, L * 0.06), C(0, 0, L * 0.25, H * 0.65, H, 'main', W / L, 0)] },
+    { id: 'treeFruit', cat: 'Rośliny', site: true, free: true, name: 'Drzewo owocowe', l: 350, w: 350, h: 400, color: '#5a8a3c',
+      parts: (L, W, H) => [C(0, 0, Math.max(6, L * 0.04), 0, H * 0.4, 'bark'), S(0, 0, H * 0.66, L / 2, 'main', H * 0.34 / (L / 2), W / L),
+        ...[[0.25, 0.1, 0.7], [-0.2, -0.2, 0.6], [0.05, 0.3, 0.8], [-0.3, 0.15, 0.75]].map(([a, b, z]) => S(a * L, b * W, z * H, Math.max(4, L * 0.025), 'tail'))] },
+    { id: 'thuja', cat: 'Rośliny', site: true, free: true, name: 'Tuja', l: 80, w: 80, h: 250, color: '#355f2f',
+      parts: (L, W, H) => [C(0, 0, 4, 0, 20, 'bark'), C(0, 0, L / 2, 15, H * 0.8, 'main', W / L, L * 0.3), C(0, 0, L * 0.3, H * 0.8, H, 'main', W / L, 0)] },
+    { id: 'bush', cat: 'Rośliny', site: true, free: true, name: 'Krzew', l: 140, w: 140, h: 110, color: '#4f7f38',
+      parts: (L, W, H) => [S(0, 0, H * 0.5, L / 2, 'main', H * 0.5 / (L / 2), W / L), S(L * 0.2, W * 0.15, H * 0.6, L * 0.3, 'leafDark', H * 0.4 / (L * 0.3), W / L)] },
+    { id: 'hedge', cat: 'Rośliny', site: true, free: true, name: 'Żywopłot', l: 300, w: 60, h: 150, color: '#3c6a2e',
+      parts: (L, W, H) => [B(-L / 2, L / 2, -W / 2, W / 2, 0, H * 0.94), B(-L / 2 + 3, L / 2 - 3, -W / 2 + 3, W / 2 - 3, H * 0.94, H)] },
+    { id: 'flowerbed', cat: 'Rośliny', site: true, free: true, name: 'Rabata z kwiatami', l: 200, w: 80, h: 35, color: '#4d7c3a',
+      parts: (L, W, H) => {
+        const out = [B(-L / 2, L / 2, -W / 2, W / 2, 0, 8, 'soil')];
+        for (let a = -L / 2 + 15, k = 0; a < L / 2 - 10; a += 22, k++) {
+          [-0.25, 0.25].forEach((b, j) => {
+            out.push(S(a + (j ? 11 : 0), b * W, 8 + (H - 8) * 0.45, 11, 'main', (H - 8) * 0.45 / 11));
+            out.push(S(a + (j ? 11 : 0), b * W, H - 5, 5, (k + j) % 2 ? 'flower' : 'flower2'));
+          });
+        }
+        return out;
+      } },
+    { id: 'planter', cat: 'Rośliny', site: true, free: true, name: 'Donica z rośliną', l: 50, w: 50, h: 110, color: '#8b5a3c',
+      parts: (L, W, H) => [C(0, 0, L / 2, 0, H * 0.4, 'main', W / L, L * 0.5), C(0, 0, L / 2 - 3, H * 0.4 - 3, H * 0.4 - 1, 'soil', W / L), S(0, 0, H * 0.7, L * 0.45, 'leafDark', H * 0.3 / (L * 0.45), W / L)] },
+
+    // ---------- Ogród ----------
+    { id: 'gardenTable', cat: 'Ogród', site: true, free: true, name: 'Stół ogrodowy', l: 160, w: 90, h: 75, color: '#a47a4f',
+      parts: (L, W, H) => [...split(-L / 2, L / 2, Math.max(4, Math.round(L / 12))).map(([a0, a1]) => B(a0 + 0.6, a1 - 0.6, -W / 2, W / 2, H - 4, H)), ...legs(L / 2, W / 2, H - 4, 7, 8, 'main2')] },
+    { id: 'gardenChair', cat: 'Ogród', site: true, free: true, name: 'Krzesło ogrodowe', l: 55, w: 58, h: 90, color: '#a47a4f',
+      parts: (L, W, H) => [...legs(L / 2, W / 2, 44, 4, 3, 'main2'), ...split(-W / 2 + 4, W / 2, 5).map(([b0, b1]) => B(-L / 2, L / 2, b0 + 0.6, b1 - 0.6, 42, 45)),
+        B(-L / 2 + 2, -L / 2 + 6, -W / 2, -W / 2 + 4, 0, H, 'main2'), B(L / 2 - 6, L / 2 - 2, -W / 2, -W / 2 + 4, 0, H, 'main2'),
+        ...split(55, H - 2, 3).map(([z0, z1]) => B(-L / 2 + 2, L / 2 - 2, -W / 2, -W / 2 + 3, z0 + 1, z1 - 1))] },
+    { id: 'bench', cat: 'Ogród', site: true, free: true, name: 'Ławka', l: 160, w: 60, h: 80, color: '#a47a4f',
+      parts: (L, W, H) => [B(-L / 2 + 8, -L / 2 + 14, -W / 2 + 4, W / 2 - 4, 0, 42, 'dark'), B(L / 2 - 14, L / 2 - 8, -W / 2 + 4, W / 2 - 4, 0, 42, 'dark'),
+        ...split(-W / 2 + 10, W / 2, 4).map(([b0, b1]) => B(-L / 2, L / 2, b0 + 0.8, b1 - 0.8, 42, 45)),
+        B(-L / 2 + 8, -L / 2 + 14, -W / 2 + 2, -W / 2 + 7, 42, H, 'dark'), B(L / 2 - 14, L / 2 - 8, -W / 2 + 2, -W / 2 + 7, 42, H, 'dark'),
+        ...split(52, H, 3).map(([z0, z1]) => B(-L / 2, L / 2, -W / 2, -W / 2 + 3, z0 + 1, z1 - 1))] },
+    { id: 'lounger', cat: 'Ogród', site: true, free: true, name: 'Leżak', l: 195, w: 68, h: 85, color: '#efe6d2',
+      parts: (L, W, H) => [
+        P([[-L / 2, 25], [L / 2 - 60, 25], [L / 2 - 60, 31], [-L / 2, 31]], -W / 2, W / 2, 'main', { bv: 1.5, r: 4 }),
+        P([[L / 2 - 64, 25], [L / 2 - 58, 25], [L / 2, H - 4], [L / 2 - 7, H]], -W / 2, W / 2, 'main', { bv: 1.5, r: 4 }),
+        ...[[-L / 2 + 6], [L / 2 - 66]].flatMap(([a]) => [B(a - 2, a + 2, -W / 2, -W / 2 + 4, 0, 25, 'metal'), B(a - 2, a + 2, W / 2 - 4, W / 2, 0, 25, 'metal')])] },
+    { id: 'umbrella', cat: 'Ogród', site: true, free: true, name: 'Parasol ogrodowy', l: 300, w: 300, h: 250, color: '#efe6d2',
+      parts: (L, W, H) => [C(0, 0, 25, 0, 6, 'dark'), C(0, 0, 2.5, 6, H, 'metal'), C(0, 0, L / 2, H - 55, H - 8, 'main', W / L, 5, 8)] },
+    { id: 'grill', cat: 'Ogród', site: true, free: true, name: 'Grill węglowy', l: 60, w: 60, h: 100, color: '#262626',
+      parts: (L, W, H) => [...[0, 1, 2].map(k => { const t = k * Math.PI * 2 / 3, a = Math.cos(t) * L * 0.3, b = Math.sin(t) * W * 0.3; return B(a - 1.5, a + 1.5, b - 1.5, b + 1.5, 0, H * 0.7, 'metal'); }),
+        S(0, 0, H * 0.72, L / 2, 'main', 0.55, W / L), C(0, 0, 3, H * 0.95, H, 'metal')] },
+    { id: 'gazebo', cat: 'Ogród', site: true, free: true, name: 'Altana', l: 300, w: 300, h: 300, color: '#8a6845',
+      parts: (L, W, H) => {
+        const hl = L / 2, hw = W / 2, eave = H * 0.68;
+        return [B(-hl, hl, -hw, hw, 0, 12, 'woodDark'),
+          ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => B(i * (hl - 10) - 6, i * (hl - 10) + 6, j * (hw - 10) - 6, j * (hw - 10) + 6, 12, eave)),
+          B(-hl + 4, hl - 4, -hw + 4, hw - 4, eave - 12, eave),
+          B(-hl + 10, hl - 10, -hw + 4, -hw + 9, 12, 95), B(-hl + 4, -hl + 9, -hw + 10, hw - 10, 12, 95), B(hl - 9, hl - 4, -hw + 10, hw - 10, 12, 95),
+          C(0, 0, (hl + 25) * Math.SQRT2, eave, H, 'woodDark', W / L, 0, 4)];
+      } },
+    { id: 'shed', cat: 'Ogród', site: true, free: true, name: 'Domek narzędziowy', l: 250, w: 200, h: 230, color: '#8a6845',
+      parts: (L, W, H) => {
+        const hl = L / 2, hw = W / 2, wallH = H * 0.72;
+        return [B(-hl + 8, hl - 8, -hw + 8, hw - 8, 0, wallH),
+          P([[-hl, wallH - 4], [hl, wallH - 4], [0, H]], -hw, hw, 'woodDark', { bv: 1, r: 2 }),
+          B(-45, 45, hw - 8, hw - 6, 0, wallH - 25, 'main2'), B(25, 30, hw - 6, hw - 4, 90, 100, 'metal')];
+      } },
+    { id: 'poolAbove', cat: 'Ogród', site: true, free: true, name: 'Basen stelażowy', l: 500, w: 300, h: 120, color: '#5b7da0',
+      parts: (L, W, H) => [B(-L / 2, L / 2, -W / 2, -W / 2 + 4, 0, H), B(-L / 2, L / 2, W / 2 - 4, W / 2, 0, H), B(-L / 2, -L / 2 + 4, -W / 2, W / 2, 0, H), B(L / 2 - 4, L / 2, -W / 2, W / 2, 0, H),
+        B(-L / 2 + 4, L / 2 - 4, -W / 2 + 4, W / 2 - 4, 0, H - 15, 'water')] },
+    { id: 'pond', cat: 'Ogród', site: true, free: true, name: 'Oczko wodne', l: 250, w: 170, h: 8, color: '#a8a29e',
+      parts: (L, W, H) => [C(0, 0, L / 2, 0, H, 'main', W / L), C(0, 0, L / 2 - 18, 0, H + 0.5, 'water', (W - 36) / (L - 36))] },
+    { id: 'trampoline', cat: 'Ogród', site: true, free: true, name: 'Trampolina', l: 366, w: 366, h: 90, color: '#2b2b2e',
+      parts: (L, W, H) => [...[0, 1, 2, 3, 4, 5].map(k => { const t = k * Math.PI / 3, a = Math.cos(t) * (L / 2 - 6), b = Math.sin(t) * (W / 2 - 6); return C(a, b, 2.5, 0, H - 6, 'metal'); }),
+        C(0, 0, L / 2, H - 6, H - 3, 'metal', W / L), C(0, 0, L / 2 - 6, H - 5, H, '#1e40af', W / L), C(0, 0, L / 2 - 22, H - 4.5, H - 3.5, 'main', W / L)] },
+    { id: 'swing', cat: 'Ogród', site: true, free: true, name: 'Huśtawka', l: 260, w: 160, h: 220, color: '#8a6845',
+      parts: (L, W, H) => [
+        ...[-1, 1].flatMap(i => [-1, 1].map(j => B(i * (L / 2 - 6) - 5, i * (L / 2 - 6) + 5, j * (W / 2 - 6) - 5, j * (W / 2 - 6) + 5, 0, H - 10))),
+        B(-L / 2, L / 2, -6, 6, H - 12, H),
+        ...[-L / 4, L / 4].flatMap(a => [B(a - 22, a + 22, -10, 10, 40, 44, 'dark'), B(a - 20, a - 19, -0.5, 0.5, 44, H - 12, 'metal'), B(a + 19, a + 20, -0.5, 0.5, 44, H - 12, 'metal')])] },
+    { id: 'sandbox', cat: 'Ogród', site: true, free: true, name: 'Piaskownica', l: 150, w: 150, h: 25, color: '#a47a4f',
+      parts: (L, W, H) => [B(-L / 2, L / 2, -W / 2, -W / 2 + 5, 0, H), B(-L / 2, L / 2, W / 2 - 5, W / 2, 0, H), B(-L / 2, -L / 2 + 5, -W / 2 + 5, W / 2 - 5, 0, H), B(L / 2 - 5, L / 2, -W / 2 + 5, W / 2 - 5, 0, H),
+        B(-L / 2 + 5, L / 2 - 5, -W / 2 + 5, W / 2 - 5, 0, H - 8, 'sand')] },
+    { id: 'gardenLamp', cat: 'Ogród', site: true, free: true, name: 'Lampa ogrodowa', l: 20, w: 20, h: 90, color: '#2b2b2e',
+      parts: (L, W, H) => [C(0, 0, L / 2, 0, 4), C(0, 0, 3, 4, H - 18), B(-L / 2, L / 2, -W / 2, W / 2, H - 18, H - 4, 'light'), B(-L / 2 - 1, L / 2 + 1, -W / 2 - 1, W / 2 + 1, H - 4, H)] },
+    { id: 'bins', cat: 'Ogród', site: true, free: true, name: 'Pojemniki na odpady', l: 180, w: 75, h: 110, color: '#3f4a3c',
+      parts: (L, W, H) => split(-L / 2, L / 2, 3).flatMap(([a0, a1], k) => [B(a0 + 2, a1 - 2, -W / 2, W / 2 - 3, 0, H - 4, ['main', 'binY', 'binB'][k]), B(a0 + 1, a1 - 1, -W / 2 - 1, W / 2, H - 4, H, ['main', 'binY', 'binB'][k])]) },
+    { id: 'compost', cat: 'Ogród', site: true, free: true, name: 'Kompostownik', l: 100, w: 100, h: 80, color: '#75532f',
+      parts: (L, W, H) => split(0, H, 6).flatMap(([z0, z1]) => [B(-L / 2, L / 2, -W / 2, -W / 2 + 3, z0 + 1, z1 - 1), B(-L / 2, L / 2, W / 2 - 3, W / 2, z0 + 1, z1 - 1),
+        B(-L / 2, -L / 2 + 3, -W / 2 + 3, W / 2 - 3, z0 + 1, z1 - 1), B(L / 2 - 3, L / 2, -W / 2 + 3, W / 2 - 3, z0 + 1, z1 - 1)]) },
+
+    // ---------- Bramy i furtki (stawiane w przerwie ogrodzenia) ----------
+    { id: 'gateSwing', cat: 'Bramy', site: true, free: true, name: 'Brama dwuskrzydłowa', l: 400, w: 15, h: 150, color: '#3a3d42', parts: (L, W, H) => gate(L, W, H, 2) },
+    { id: 'gateSlide', cat: 'Bramy', site: true, free: true, name: 'Brama przesuwna', l: 450, w: 15, h: 150, color: '#3a3d42', parts: (L, W, H) => gate(L, W, H, 1) },
+    { id: 'wicket', cat: 'Bramy', site: true, free: true, name: 'Furtka', l: 110, w: 15, h: 150, color: '#3a3d42', parts: (L, W, H) => gate(L, W, H, 1) },
+
     // ---------- Własne ----------
     { id: 'photo', cat: 'Własne', name: 'Mebel ze zdjęcia', l: 60, w: 60, h: 85, color: '#d9d4cc', photo: true },
     { id: 'model', cat: 'Własne', name: 'Model 3D (.glb)', l: 100, w: 100, h: 100, color: '#c8c8c8', model: true },
@@ -287,7 +400,9 @@ window.App = window.App || {};
         ctx.fillStyle = tech ? '#ffffff' : m === 'glass' ? 'rgba(160,200,230,0.35)' : col;
         ctx.beginPath();
         if (p.b) ctx.rect(p.b[0], p.b[2], p.b[1] - p.b[0], p.b[3] - p.b[2]);
+        else if (p.c && p.seg === 4) { const r = p.c[2] / Math.SQRT2; ctx.rect(p.c[0] - r, p.c[1] - r * (p.s || 1), 2 * r, 2 * r * (p.s || 1)); }
         else if (p.c) ctx.ellipse(p.c[0], p.c[1], p.c[2], p.c[2] * (p.s || 1), 0, 0, Math.PI * 2);
+        else if (p.e) ctx.ellipse(p.e[0], p.e[1], p.e[3], p.e[3] * (p.sb || 1), 0, 0, Math.PI * 2);
         else if (p.p) {
           const as = p.p.map(q => q[0]), a0 = Math.min(...as), a1 = Math.max(...as), r = Math.min(p.r || 0, (a1 - a0) / 2, (p.w[1] - p.w[0]) / 2);
           if (ctx.roundRect) ctx.roundRect(a0, p.w[0], a1 - a0, p.w[1] - p.w[0], r); else ctx.rect(a0, p.w[0], a1 - a0, p.w[1] - p.w[0]);
@@ -300,7 +415,8 @@ window.App = window.App || {};
     // Front zaznaczony grubszą linią.
     ctx.lineWidth = u * (sel ? 2.2 : 1.2);
     ctx.strokeStyle = sel ? '#2563eb' : tech ? '#4b5563' : '#27272a';
-    ctx.strokeRect(-o.l / 2, -o.w / 2, o.l, o.w);
+    // Rośliny i wyposażenie ogrodu bez prostokąta obrysu (korona drzewa jest okrągła) – chyba że zaznaczone.
+    if (!d.site || sel) ctx.strokeRect(-o.l / 2, -o.w / 2, o.l, o.w);
     if (d.photo || d.model) {
       ctx.lineWidth = u * 2.5;
       ctx.beginPath();
@@ -310,7 +426,7 @@ window.App = window.App || {};
     }
     ctx.restore();
   };
-  const top = (p) => (p.b ? p.b[5] : p.c ? p.c[4] : p.p ? Math.max(...p.p.map(q => q[1])) : p.d[1] + p.d[2]);
+  const top = (p) => (p.b ? p.b[5] : p.c ? p.c[4] : p.p ? Math.max(...p.p.map(q => q[1])) : p.e ? p.e[2] + p.e[3] * (p.sz || 1) : p.d[1] + p.d[2]);
 
   // Miniatura do katalogu.
   App.furnitureThumb = (def, size = 44) => {

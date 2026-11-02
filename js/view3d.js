@@ -330,6 +330,14 @@
       const g = new THREE.Group();
       g.position.y = elev;
       root.add(g);
+      // Zagospodarowanie terenu (działka, nawierzchnie, ogrodzenia, rośliny) – na rzędnej terenu 0, nie kondygnacji.
+      const sg = new THREE.Group();
+      root.add(sg);
+      if (!only) {
+        lv.plots.forEach(o => { const objs = tagged(sg, o.id, i, () => buildSlab(sg, o.pts, 0.3, 1.3, o.color)); if (o.tex) applyTexture(meshesOf(objs, solid), o.tex, sg); });
+        lv.paths.forEach(o => { const objs = tagged(sg, o.id, i, () => buildSlab(sg, o.pts, o.h, o.h + 1, o.color)); if (o.tex) applyTexture(meshesOf(objs, solid), o.tex, sg); });
+        lv.fences.forEach(o => tagged(sg, o.id, i, () => buildFence(sg, o)));
+      }
       lv.walls.forEach(w => {
         const objs = tagged(g, w.id, i, () => buildWall(g, lv, w, wallMat, i));
         if (only) return ghost(objs, 0.1);
@@ -364,7 +372,10 @@
           return;
         }
         if (o.kind === 'furniture') {
-          const objs = tagged(g, o.id, i, () => buildFurniture(g, o, lv, i));
+          // Rośliny i wyposażenie ogrodu na parterze, poza pokojami, stoją na terenie (parter może być podniesiony).
+          const onSite = App.furnitureDef(o.type).site && i === (p.ground || 0) && !lv.rooms.some(r => G.inside(o, r.pts));
+          const pg = onSite ? sg : g;
+          const objs = tagged(pg, o.id, i, () => buildFurniture(pg, o, lv, i));
           objs.forEach(x => {
             if (o.tex) applyTexture(meshesOf([x], m => m.userData.main), o.tex, x);
             if (o.front) applyTexture(meshesOf([x], m => m.userData.front), Object.assign({}, o.front, { mode: 'stretch' }), x);
@@ -701,10 +712,94 @@
     k.position.z = (4 + z0) / 2;
   }
 
+  // ---------- Teren: działka, nawierzchnie, ogrodzenia ----------
+  // Płyta o obrysie pts: wierzch na wysokości top, grubość thick (w dół).
+  function buildSlab(parent, pts, top, thick, color) {
+    if (pts.length < 3 || Math.abs(G.area(pts)) < 100) return;
+    const shape = new THREE.Shape(pts.map(q => new THREE.Vector2(q.x, q.y)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false });
+    geo.rotateX(Math.PI / 2);
+    const m = mesh(geo, mat(color || '#cccccc', { roughness: 0.95 }), parent);
+    m.position.y = top;
+    m.castShadow = false;
+  }
+  // Wiele prostopadłościanów [x0, x1, y0, y1, z0, z1] w jednej geometrii (pręty paneli, sztachety, deski).
+  function boxesGeometry(list) {
+    const pos = [], nor = [];
+    const quad = (a, b, c, d, n) => { [a, b, c, a, c, d].forEach(v => { pos.push(...v); nor.push(...n); }); };
+    list.forEach(([x0, x1, y0, y1, z0, z1]) => {
+      quad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1]);
+      quad([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1]);
+      quad([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0]);
+      quad([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0]);
+      quad([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0]);
+      quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [0, -1, 0]);
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    return geo;
+  }
+  // Ogrodzenie: każdy odcinek w swoim układzie (x – wzdłuż, y – w górę, z – w poprzek): podmurówka, słupki, wypełnienie.
+  function buildFence(parent, o) {
+    const st = App.fenceStyle(o.style), H = o.h, base = Math.min(o.base || 0, H - 10), span = Math.max(50, o.span || 250);
+    const fill = mat(o.color, o.style === 'panel' ? { metalness: 0.4, roughness: 0.5 } : o.style === 'mesh' ? { transparent: true, opacity: 0.45, depthWrite: false } : {});
+    const postMat = o.style === 'solid' ? mat(o.baseColor || '#a8a29e') : mat(o.style === 'panel' || o.style === 'mesh' ? o.color : App.shade(o.color, 0.8), o.style === 'panel' ? { metalness: 0.4, roughness: 0.5 } : {});
+    const baseMat = mat(o.baseColor || '#a8a29e');
+    const segs = App.fenceSegments(o), P = st.post;
+    segs.forEach(([a, b], k) => {
+      const L = G.dist(a, b), gs = new THREE.Group();
+      gs.position.set(a.x, 0, a.y);
+      gs.rotation.y = -Math.atan2(b.y - a.y, b.x - a.x);
+      parent.add(gs);
+      // Słupki: na początku odcinka (koniec ma następny odcinek albo osobny słupek) i pośrednie co ≤ span.
+      const n = Math.max(1, Math.ceil(L / span)), posts = [];
+      for (let j = 0; j < n; j++) posts.push(j * L / n);
+      if (k === segs.length - 1 && !o.closed) posts.push(L);
+      const ph = o.style === 'solid' ? H + 6 : H + 2;
+      gs.add(Object.assign(new THREE.Mesh(boxesGeometry(posts.map(t => [t - P / 2, t + P / 2, 0, ph, -P / 2, P / 2])), postMat), { castShadow: true, receiveShadow: true }));
+      if (o.style === 'solid') gs.add(Object.assign(new THREE.Mesh(boxesGeometry(posts.map(t => [t - P / 2 - 3, t + P / 2 + 3, ph, ph + 5, -P / 2 - 3, P / 2 + 3])), mat(App.shade(o.baseColor || '#a8a29e', 0.85))), { castShadow: true }));
+      const x0 = P / 2, x1 = L - P / 2;
+      if (base > 0) {
+        const bt = o.style === 'solid' ? 22 : 6, bm = new THREE.Mesh(boxesGeometry([[0, L, 0, base, -bt / 2, bt / 2]]), baseMat);
+        bm.castShadow = bm.receiveShadow = true;
+        gs.add(bm);
+        if (o.texBase) applyTexture([bm], o.texBase, gs);
+      }
+      const z0 = base > 0 ? base + (o.style === 'solid' ? 0 : 3) : 5, z1 = H, boxes = [];
+      // Wypełnienie między słupkami (pręty i deski nie wchodzą w słupki).
+      const between = (fn) => posts.concat(posts[posts.length - 1] < L - 1 ? [L] : []).forEach((t, j, arr) => { if (j) fn(arr[j - 1] + P / 2, t - P / 2); });
+      if (o.style === 'panel') {
+        between((s0, s1) => {
+          for (let x = s0 + 2.5; x < s1 - 1; x += 5) boxes.push([x - 0.25, x + 0.25, z0, z1, -0.25, 0.25]);
+          [0.04, 0.5, 0.96].forEach(f => { const z = z0 + (z1 - z0) * f; boxes.push([s0, s1, z - 0.3, z + 0.3, -0.8, -0.2], [s0, s1, z - 0.3, z + 0.3, 0.2, 0.8]); });
+        });
+      } else if (o.style === 'pickets') {
+        between((s0, s1) => {
+          boxes.push([s0, s1, z0 + 12, z0 + 20, -3, 0], [s0, s1, z1 - 22, z1 - 14, -3, 0]);
+          for (let x = s0 + 2; x + 9 <= s1 - 1; x += 13) boxes.push([x, x + 9, z0 + 3, z1 - 3, 0, 2], [x + 2, x + 7, z1 - 3, z1, 0, 2]);
+        });
+      } else if (o.style === 'boards') {
+        between((s0, s1) => { for (let z = z0 + 1; z + 12 <= z1 + 0.5; z += 14) boxes.push([s0, s1, z, z + 12, -1, 1]); });
+      } else if (o.style === 'solid') {
+        between((s0, s1) => boxes.push([s0, s1, z0, z1 - 4, -10, 10], [s0, s1, z1 - 4, z1, -12, 12]));
+      } else {
+        between((s0, s1) => boxes.push([s0, s1, z0, z1, -0.15, 0.15], [s0, s1, z1 - 1, z1, -0.4, 0.4]));
+      }
+      if (!boxes.length || x1 <= x0) return;
+      const fm = new THREE.Mesh(boxesGeometry(boxes), fill);
+      fm.castShadow = o.style !== 'mesh';
+      fm.receiveShadow = true;
+      gs.add(fm);
+      if (o.tex) applyTexture([fm], o.tex, gs);
+    });
+  }
+
   // ---------- Meble ----------
   const FURN_OPTS = {
     metal: { metalness: 0.6, roughness: 0.35 }, steel: { metalness: 0.5, roughness: 0.4 }, screen: { roughness: 0.2 }, glassDark: { roughness: 0.15 },
     glass: { transparent: true, opacity: 0.3, roughness: 0.1, depthWrite: false }, white: { roughness: 0.4 },
+    water: { transparent: true, opacity: 0.8, roughness: 0.08, metalness: 0.1 }, leafDark: { roughness: 0.95 }, conifer: { roughness: 0.95 },
     paint: { metalness: 0.35, roughness: 0.35 }, carGlass: { metalness: 0.3, roughness: 0.1 }, tire: { roughness: 0.95 },
     light: { emissive: '#3a3a30', roughness: 0.2 }, tail: { emissive: '#4a0a0a', roughness: 0.3 },
   };
@@ -727,9 +822,16 @@
         m.position.set((a0 + a1) / 2, (z0 + z1) / 2, (b0 + b1) / 2);
       } else if (p.c) {
         const [a, b, r, z0, z1] = p.c;
-        m = mesh(new THREE.CylinderGeometry(r, r, z1 - z0, 32), material, g);
+        if (z1 - z0 < 0.05) return;
+        m = mesh(new THREE.CylinderGeometry(p.t != null ? p.t : r, r, z1 - z0, p.seg || 32), material, g);
         m.position.set(a, (z0 + z1) / 2, b);
-        m.scale.z = p.s || 1;
+        // Ostrosłup (4 boki) – obrócony tak, by krawędzie podstawy były równoległe do osi mebla, potem rozciągnięty w głąb.
+        if (p.seg === 4) { m.geometry.rotateY(Math.PI / 4); m.geometry.scale(1, 1, p.s || 1); } else m.scale.z = p.s || 1;
+      } else if (p.e) {
+        const [a, b, z, r] = p.e;
+        m = mesh(new THREE.SphereGeometry(r, 24, 16), material, g);
+        m.position.set(a, z, b);
+        m.scale.set(1, p.sz || 1, p.sb || 1);
       } else if (p.p) {
         // Profil boczny (a, z) wyciągnięty w głąb od b0 do b1, z zaokrąglonymi krawędziami (karoseria auta).
         // Zaokrąglenie powiększa obrys o bv – profil zmniejszony o tyle, żeby wymiary zostały prawdziwe.

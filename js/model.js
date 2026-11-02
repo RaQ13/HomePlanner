@@ -20,6 +20,10 @@ window.App = window.App || {};
     stairs: { shape: 'straight', width: 100, length: 300, steps: 16 },
     chimney: { width: 60, depth: 60, above: 100 },
     furniture: { type: 'sofa' },
+    garden: { type: 'treeLeaf' },
+    plot: { color: '#9fc46f' },
+    path: { kind: 'chodnik', mode: 'strip', width: 120 },
+    fence: { style: 'panel', h: 150, base: 20, span: 250, color: '#3a3d42' },
     install: { type: 'socket' },
     roof: { type: 'gable', pitch: 35, overhang: 50, raise: 0, color: '#8f3b2c' },
   };
@@ -37,8 +41,12 @@ window.App = window.App || {};
   // attic – poddasze: dachy tej kondygnacji opierają się na jej podłodze (+ ścianka kolankowa), ściany ścina połać.
   App.newLevel = (name, height) => ({
     id: App.uid(), name, height, attic: false, walls: [], rooms: [], openings: [], objects: [], roofs: [], installs: [],
+    plots: [], paths: [], fences: [],
   });
-  const LISTS = ['walls', 'rooms', 'openings', 'objects', 'roofs', 'installs'];
+  // plots – działki, paths – nawierzchnie (chodnik, podjazd, taras…), fences – ogrodzenia; leżą na terenie,
+  // zapisywane na kondygnacji na poziomie terenu (parter).
+  const LISTS = ['walls', 'rooms', 'openings', 'objects', 'roofs', 'installs', 'plots', 'paths', 'fences'];
+  App.LISTS = LISTS;
 
   App.newProject = () => ({
     version: 1,
@@ -157,6 +165,7 @@ window.App = window.App || {};
     lv.roofs = lv.roofs.filter(o => o.id !== id);
     lv.openings = lv.openings.filter(o => o.id !== id && lv.walls.some(w => w.id === o.wallId));
     lv.installs = lv.installs.filter(o => o.id !== id && (!o.wallId || lv.walls.some(w => w.id === o.wallId)));
+    ['plots', 'paths', 'fences'].forEach(k => { lv[k] = lv[k].filter(o => o.id !== id); });
   };
 
   // ---------- Historia (cofnij / ponów) i zapis ----------

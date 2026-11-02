@@ -65,6 +65,10 @@ Przełącznik w prawym górnym rogu: **Rzut 2D**, **2D + 3D** albo **Widok 3D**.
 | Instalacje | I | Elektryczna i wodno-kanalizacyjna (opis niżej) |
 | Meble | E | Katalog mebli i AGD, meble ze zdjęcia, modele .glb |
 | Dach | A | Dach dwuspadowy (także łamany), czterospadowy, jednospadowy albo płaski |
+| Działka | G | Granica działki i teren (kolor, tekstura); powierzchnia, długości boków |
+| Nawierzchnia | N | Chodnik, podjazd, taras, żwir, rabata, trawnik – pas o szerokości albo obszar |
+| Płot | Z | Ogrodzenie panelowe, ze sztachet, z desek, pełne/murowane albo z siatki |
+| Ogród | Y | Drzewa, krzewy, żywopłot, meble ogrodowe, altana, domek, basen, bramy i furtki |
 
 **Skróty ogólne**
 - Ctrl+Z: cofnij. Ctrl+Y albo Ctrl+Shift+Z: ponów.
@@ -111,6 +115,27 @@ Narzędzie **Meble (E)** otwiera katalog z kategoriami Pokój, Kuchnia, Łazienk
 - We Właściwościach zmieniasz wymiary, kolory, wysokość zawieszenia i teksturę.
 - **Mebel ze zdjęcia**: zdjęcie frontu nakładane na bryłę o podanych wymiarach.
 - **Model .glb**: import gotowego modelu 3D, skalowanego do podanych wymiarów.
+
+## Działka i ogród
+
+Narzędzia terenu działają na kondygnacji parteru: po wybraniu narzędzia program sam na nią przełącza. Wszystko stoi na poziomie terenu, także przy podniesionym parterze.
+
+- **Działka (G)**: klikasz narożniki granicy, a pierwszy punkt albo Enter zamyka obrys.
+  - Na rzucie widać granicę linią kreska–kropka, długości boków, nazwę i powierzchnię w m² i arach.
+  - We Właściwościach zmienisz kolor i teksturę terenu (np. trawa) i zobaczysz obwód oraz zabudowę liczoną z obrysu pokoi w osiach ścian, w m² i % działki.
+- **Nawierzchnia (N)**: chodnik, podjazd, taras, plac lub opaska, żwir, rabata z kory albo trawnik. Każdy rodzaj ma własną wysokość nad terenem (taras 15 cm), a kolor i teksturę (np. kostkę) ustawiasz we Właściwościach. Kształt rysujesz na dwa sposoby:
+  - **pas o szerokości**: klikasz punkty osi chodnika, a program buduje pas z narożnikami;
+  - **obszar**: klikasz narożniki.
+- **Płot (Z)**: klikasz kolejne punkty. Kliknięcie pierwszego punktu zamyka ogrodzenie dookoła, a Enter albo prawy klik je kończy.
+  - Do wyboru płot panelowy, ze sztachet, z desek poziomych, pełny lub murowany (ze słupkami i daszkami) albo z siatki.
+  - Ustawiasz wysokość, podmurówkę, rozstaw słupków i kolory.
+  - **Tekstury** nakładasz osobno na wypełnienie (np. cegła, deska) i na podmurówkę.
+- **Ogród (Y)**: katalog w trzech grupach:
+  - **Rośliny**: drzewo liściaste, świerk, drzewo owocowe, tuja, krzew, żywopłot, rabata z kwiatami, donica.
+  - **Ogród**: stół i krzesło ogrodowe, ławka, leżak, parasol, grill, altana, domek narzędziowy, basen stelażowy, oczko wodne, trampolina, huśtawka, piaskownica, lampa ogrodowa, pojemniki na odpady, kompostownik.
+  - **Bramy**: brama dwuskrzydłowa, brama przesuwna i furtka. Stawia się je w przerwie zostawionej w płocie.
+
+Wierzchołki zaznaczonej działki, nawierzchni lub płotu można przeciągać, a cały element przesuwa się przeciągnięciem. Kopiowanie, usuwanie i cofanie działają jak dla innych elementów.
 
 ## Instalacje
 

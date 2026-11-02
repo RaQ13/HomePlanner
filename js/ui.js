@@ -32,6 +32,10 @@
     { id: 'install', name: 'Instalacje', key: 'I', icon: svg('<path d="M13 3l-6 10h5l-1 8 6-10h-5z"/>') },
     { id: 'furniture', name: 'Meble', key: 'E', icon: svg('<path d="M4 11V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"/><path d="M3 11h18v5H3zM5 16v3M19 16v3"/>') },
     { id: 'roof', name: 'Dach', key: 'A', icon: svg('<path d="M2 13l10-8 10 8"/><path d="M5 11v8h14v-8"/>') },
+    { id: 'plot', name: 'Działka', key: 'G', icon: svg('<path d="M3 7l8-4 10 5-3 12-14-2z" stroke-dasharray="4 2"/>') },
+    { id: 'path', name: 'Nawierzchnia', key: 'N', icon: svg('<path d="M6 21l4-18M18 21l-4-18"/><path d="M12 5v2M12 11v2M12 17v2"/>') },
+    { id: 'fence', name: 'Płot', key: 'Z', icon: svg('<path d="M5 21V7l2-3 2 3v14M15 21V7l2-3 2 3v14M3 10h18M3 16h18"/>') },
+    { id: 'garden', name: 'Ogród', key: 'Y', icon: svg('<circle cx="12" cy="9" r="6"/><path d="M12 15v6M9 21h6"/>') },
   ];
 
   const UI = App.ui = {};
@@ -395,6 +399,42 @@
       ], [del]);
     }
     if (sel.kind === 'object' && o.kind === 'furniture') return furnitureForm(o, del);
+    if (sel.kind === 'plot') {
+      return form('Działka', [
+        { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name, set: editSet(v => { o.name = v; }) },
+        { key: 'color', label: 'Kolor terenu', type: 'color', get: () => o.color, set: editSet(v => { o.color = v; }) },
+        ...texFields(o, 'tex', 'Tekstura terenu'),
+        { label: 'Powierzchnia', type: 'info', get: () => App.fmtArea(o.pts) },
+        { label: 'Obwód', type: 'info', get: () => (G.perimeter(o.pts) / 100).toFixed(2).replace('.', ',') + ' m' },
+        { label: 'Zabudowa', type: 'info', get: () => builtUp(lv, o) },
+        { label: 'Narożniki', type: 'info', get: () => String(o.pts.length) },
+      ], [del]);
+    }
+    if (sel.kind === 'path') {
+      return form('Nawierzchnia', [
+        { key: 'type', label: 'Rodzaj', type: 'select', options: App.PATH_KINDS.map(k => [k.id, k.name]), get: () => o.type,
+          set: editSet(v => { const k = App.pathKind(v); Object.assign(o, { type: v, h: k.h, color: k.color }); }) },
+        { key: 'h', label: 'Wysokość nad terenem', unit: 'cm', min: 0.5, max: 300, step: 0.5, get: () => o.h, set: editSet(v => { o.h = v; }) },
+        { key: 'color', label: 'Kolor', type: 'color', get: () => o.color, set: editSet(v => { o.color = v; }) },
+        ...texFields(o, 'tex', 'Tekstura (kostka, płyty…)'),
+        { label: 'Powierzchnia', type: 'info', get: () => App.fmtArea(o.pts) },
+      ], [del]);
+    }
+    if (sel.kind === 'fence') {
+      return form('Ogrodzenie', [
+        { key: 'style', label: 'Rodzaj', type: 'select', options: App.FENCE_STYLES.map(k => [k.id, k.name]), get: () => o.style,
+          set: editSet(v => { o.style = v; o.color = App.fenceStyle(v).color; }) },
+        { key: 'h', label: 'Wysokość', unit: 'cm', min: 30, max: 400, get: () => o.h, set: editSet(v => { o.h = v; }) },
+        { key: 'base', label: 'Podmurówka', unit: 'cm', min: 0, max: 200, get: () => o.base || 0, set: editSet(v => { o.base = v; }) },
+        { key: 'span', label: 'Rozstaw słupków', unit: 'cm', min: 50, max: 600, step: 5, get: () => o.span || 250, set: editSet(v => { o.span = v; }) },
+        { key: 'color', label: 'Kolor wypełnienia', type: 'color', get: () => o.color, set: editSet(v => { o.color = v; }) },
+        { key: 'baseColor', label: o.style === 'solid' ? 'Kolor słupków i podmurówki' : 'Kolor podmurówki', type: 'color', get: () => o.baseColor || '#a8a29e', set: editSet(v => { o.baseColor = v; }) },
+        { key: 'closed', label: 'Zamknięte dookoła', type: 'checkbox', get: () => !!o.closed, set: editSet(v => { o.closed = v && o.pts.length > 2; }) },
+        ...texFields(o, 'tex', 'Tekstura wypełnienia'),
+        ...texFields(o, 'texBase', 'Tekstura podmurówki'),
+        { label: 'Długość', type: 'info', get: () => (App.fenceLength(o) / 100).toFixed(2).replace('.', ',') + ' m' },
+      ], [del]);
+    }
     if (sel.kind === 'install') return installForm(o, lv, del);
     if (sel.kind === 'object' && o.kind === 'roofwin') {
       const fr = App.roofWinFrame(o, App.project.current);
@@ -414,6 +454,14 @@
       ], [h('button', { onclick: E.rotate }, 'Obróć 90° (T)'), del]);
     }
     return null;
+  }
+
+  // Powierzchnia zabudowy na działce: obrys ścian zewnętrznych parteru (wielokąty ścian i pokoi w obrysie działki).
+  function builtUp(lv, plot) {
+    const rooms = lv.rooms.filter(r => G.inside(G.centroid(r.pts), plot.pts));
+    if (!rooms.length) return '—';
+    const area = rooms.reduce((s, r) => s + Math.abs(G.area(r.pts)), 0) / 10000, total = Math.abs(G.area(plot.pts)) / 10000;
+    return `${area.toFixed(1).replace('.', ',')} m² (${Math.round(area / total * 100)}%) – w osiach ścian`;
   }
 
   // ---------- Instalacje ----------
@@ -461,7 +509,7 @@
       { key: 'l', label: 'Szerokość', unit: 'cm', min: 1, max: 2000, get: () => o.l, set: editSet(v => { o.l = v; }) },
       { key: 'w', label: 'Głębokość', unit: 'cm', min: 1, max: 2000, get: () => o.w, set: editSet(v => { o.w = v; }) },
       { key: 'h', label: 'Wysokość', unit: 'cm', min: 0.5, max: 1000, get: () => o.h, set: editSet(v => { o.h = v; }) },
-      { key: 'z', label: 'Nad podłogą', unit: 'cm', min: 0, max: 1000, get: () => o.z || 0, set: editSet(v => { o.z = v; }) },
+      { key: 'z', label: def.site ? 'Nad terenem' : 'Nad podłogą', unit: 'cm', min: 0, max: 1000, get: () => o.z || 0, set: editSet(v => { o.z = v; }) },
       def.model ? null : { key: 'color', label: 'Kolor', type: 'color', get: () => o.color, set: editSet(v => { o.color = v; }) },
     ];
     if (def.photo) {
@@ -486,10 +534,12 @@
     o.h = Math.round(o.l * t.aspect);
     if (t.avg) o.color = t.avg;
   }
-  function furnitureCatalog() {
-    const d = App.defaults.furniture, wrap = h('div', { className: 'form' }, h('h3', {}, 'Nowy mebel'));
+  // Katalog mebli (narzędzie Meble) albo roślin i wyposażenia ogrodu (narzędzie Ogród).
+  function furnitureCatalog(garden) {
+    const d = garden ? App.defaults.garden : App.defaults.furniture, wrap = h('div', { className: 'form' }, h('h3', {}, garden ? 'Ogród' : 'Nowy mebel'));
     const pick = (id) => { d.type = id; App.saveDefaults(); App.emit('furnitureType'); renderProps(); };
-    [...new Set(App.FURNITURE.map(f => f.cat))].forEach(cat => {
+    if (!!App.furnitureDef(d.type).site !== !!garden) d.type = App.FURNITURE.find(f => !!f.site === !!garden).id;
+    [...new Set(App.FURNITURE.filter(f => !!f.site === !!garden).map(f => f.cat))].forEach(cat => {
       wrap.append(h('div', { className: 'furn-cat' }, cat));
       wrap.append(h('div', { className: 'furn-grid' }, App.FURNITURE.filter(f => f.cat === cat).map(f =>
         h('button', { className: 'furn-item' + (d.type === f.id ? ' active' : ''), title: `${f.name} – ${f.l} × ${f.w} × ${f.h} cm`, onclick: () => pick(f.id) },
@@ -645,7 +695,25 @@
       { key: 'dd', label: 'Głębokość', unit: 'cm', min: 20, max: 300, get: () => d.chimney.depth, set: defSet(d.chimney, 'depth') },
       { key: 'da', label: 'Ponad dach', unit: 'cm', min: 0, max: 500, get: () => d.chimney.above, set: defSet(d.chimney, 'above') },
     ]);
-    if (t === 'furniture') return furnitureCatalog();
+    if (t === 'furniture') return furnitureCatalog(false);
+    if (t === 'garden') return furnitureCatalog(true);
+    if (t === 'plot') return form('Nowa działka', [
+      { key: 'dc', label: 'Kolor terenu', type: 'color', get: () => d.plot.color, set: defSet(d.plot, 'color') },
+      { label: 'Wskazówka', type: 'info', get: () => 'Klikaj narożniki granicy działki' },
+    ]);
+    if (t === 'path') return form('Nowa nawierzchnia', [
+      { key: 'dk', label: 'Rodzaj', type: 'select', options: App.PATH_KINDS.map(k => [k.id, k.name]), get: () => d.path.kind, set: defSet(d.path, 'kind') },
+      { key: 'dm', label: 'Rysowanie', type: 'select', options: [['strip', 'pas o szerokości (oś)'], ['area', 'obszar (narożniki)']], get: () => d.path.mode, set: (v) => { defSet(d.path, 'mode')(v); renderProps(); } },
+      d.path.mode === 'strip' ? { key: 'dw', label: 'Szerokość', unit: 'cm', min: 20, max: 1000, step: 5, get: () => d.path.width, set: defSet(d.path, 'width') } : null,
+    ]);
+    if (t === 'fence') return form('Nowe ogrodzenie', [
+      { key: 'ds', label: 'Rodzaj', type: 'select', options: App.FENCE_STYLES.map(k => [k.id, k.name]), get: () => d.fence.style,
+        set: (v) => { d.fence.style = v; d.fence.color = App.fenceStyle(v).color; App.saveDefaults(); renderProps(); } },
+      { key: 'dh', label: 'Wysokość', unit: 'cm', min: 30, max: 400, get: () => d.fence.h, set: defSet(d.fence, 'h') },
+      { key: 'db', label: 'Podmurówka', unit: 'cm', min: 0, max: 200, get: () => d.fence.base, set: defSet(d.fence, 'base') },
+      { key: 'dsp', label: 'Rozstaw słupków', unit: 'cm', min: 50, max: 600, step: 5, get: () => d.fence.span, set: defSet(d.fence, 'span') },
+      { key: 'dc', label: 'Kolor', type: 'color', get: () => d.fence.color, set: defSet(d.fence, 'color') },
+    ]);
     if (t === 'install') return installCatalog();
     if (t === 'roof') return form('Nowy dach', [
       { key: 'dt', label: 'Rodzaj', type: 'select', options: App.ROOF_TYPES, get: () => d.roof.type, set: defSet(d.roof, 'type') },
@@ -671,6 +739,8 @@
     const lv = App.level();
     wrap.append(h('p', { className: 'muted' },
       `${lv.name}: ścian ${lv.walls.length}, pokoi ${lv.rooms.length}, drzwi ${lv.openings.filter(o => o.kind === 'door').length}, okien ${lv.openings.filter(o => o.kind === 'window').length}.`));
+    const ground = p.levels[p.ground || 0];
+    ground.plots.forEach(o => wrap.append(h('div', { className: 'row' }, h('label', {}, o.name || 'Działka'), h('span', { className: 'info' }, App.fmtArea(o.pts)))));
     wrap.append(h('p', { className: 'muted' }, 'Zaznacz element na rzucie, aby edytować jego wymiary.'));
     return wrap;
   }
