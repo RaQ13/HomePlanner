@@ -1198,30 +1198,52 @@
   // Pozycja stóp w metrach (świat), kierunek patrzenia yaw/pitch. Ściany, meble i okna zatrzymują,
   // stopnie do 45 cm pokonuje się krokiem – po schodach wchodzi się na wyższą kondygnację.
   const W = { on: false, pos: null, yaw: 0, pitch: 0, keys: new Set(), saved: null, goal: null, sent: '' };
-  const EYE = 1.65, STEP = 0.45, RADIUS = 0.28, BODY = [0.5, 0.8, 1.1, 1.6];
+  const EYE = 1.65, STEP = 0.45, CLIMB = 1.0, RADIUS = 0.28, BODY = [0.5, 0.8, 1.1, 1.6];
   V.walking = () => W.on;
   const caster = () => { const r = new THREE.Raycaster(); r.firstHitOnly = true; return r; };
   const upNormal = (h) => h.face && h.face.normal.clone().transformDirection(h.object.matrixWorld).y;
   // Najwyższa pozioma powierzchnia pod punktem (podłoga, stopień, teren, chodnik) – rzędna w metrach.
-  function floorBelow(x, z, fromY) {
+  function floorHit(x, z, fromY) {
     const r = caster();
     r.set(new THREE.Vector3(x, fromY, z), new THREE.Vector3(0, -1, 0));
     r.far = 60;
     for (const h of r.intersectObjects([root, terrain], true)) {
       if (!h.object.isMesh || !h.object.visible) continue;
-      if (upNormal(h) > 0.5) return h.point.y;
+      if (upNormal(h) > 0.5) return h;
     }
     return null;
   }
+  function floorBelow(x, z, fromY) {
+    const h = floorHit(x, z, fromY);
+    return h ? h.point.y : null;
+  }
+  // Kondygnacja, na której stoi człowiek: podłoga pokoju, schody, mebel – ich kondygnacja; teren – parter.
+  // Nie z samej wysokości, bo pokój „na poziomie terenu” przy podniesionym parterze leży niżej niż jego kondygnacja.
+  function standOn(h) {
+    if (h.object === terrain) { W.level = App.project.ground || 0; return; }
+    const pk = pickOf(h.object);
+    if (pk && pk.level != null) W.level = pk.level;
+  }
   // Czy ruch o d (metry) w kierunku dir koliduje z czymś na wysokości kolan, bioder, piersi lub głowy.
-  function blocked(pos, dir, d) {
+  // Kolana i biodra liczone od wyższej z podłóg (tu / przed sobą), głowa – od niższej: przy uskoku między
+  // podłogami pokoi nie zatrzymuje krawędź ściany pod progiem ani nadproże drzwi wyciętych od niższej podłogi.
+  function blocked(pos, dir, d, hi, lo) {
     const r = caster();
     r.far = d + RADIUS;
     for (const hgt of BODY) {
-      r.set(new THREE.Vector3(pos.x, pos.y + hgt, pos.z), dir);
+      r.set(new THREE.Vector3(pos.x, (hgt < 1.5 ? hi : lo) + hgt, pos.z), dir);
       if (r.intersectObject(root, true).some(h => h.object.isMesh && h.object.visible && !h.object.userData.slab)) return true;
     }
     return false;
+  }
+  // Powierzchnia, na którą można wejść większym krokiem (do CLIMB): podłoga pokoju, ściana pod progiem, teren,
+  // nawierzchnia – ale nie mebel, schody czy komin.
+  const CLIMBABLE = new Set(['room', 'wall', 'opening', 'path', 'plot']);
+  function climbable(h) {
+    if (h.object === terrain || h.object.userData.slab) return true;
+    const pk = pickOf(h.object), lv = pk && App.project.levels[pk.level];
+    const f = lv && App.find(pk.id, lv);
+    return !!f && CLIMBABLE.has(f.kind);
   }
   // Ruch dzielony na krótkie kroki (przy niskiej liczbie klatek jeden skok nie wejdzie w ścianę ani w stopień).
   function tryMove(dx, dz) {
@@ -1238,12 +1260,26 @@
       const l = Math.hypot(mx, mz);
       if (l < len * 0.2) continue;
       const dir = new THREE.Vector3(mx / l, 0, mz / l);
-      if (blocked(feet, dir, l)) continue;
-      // Krok w górę najwyżej o STEP, w dół – dowolnie (zejście, upadek z krawędzi).
-      const f = floorBelow(W.pos.x + mx, W.pos.z + mz, W.target + STEP);
-      if (f == null) continue;
+      // Podłogi tuż przed sobą: wyższa (uskok do wejścia) i niższa (zejście).
+      let hi = feet.y, lo = feet.y;
+      for (const t of [l + RADIUS * 0.5, l + RADIUS, l + RADIUS + 0.15, l + RADIUS + 0.3]) {
+        const a = floorHit(feet.x + dir.x * t, feet.z + dir.z * t, feet.y + CLIMB);
+        if (!a) continue;
+        const dy = a.point.y - feet.y;
+        if (dy > STEP && climbable(a)) hi = Math.max(hi, a.point.y);
+        if (dy < -STEP) lo = Math.min(lo, a.point.y);
+      }
+      if (blocked(feet, dir, l, hi, lo)) continue;
+      // Krok w górę najwyżej o STEP (stopień, niski mebel), w dół – dowolnie (zejście, upadek z krawędzi).
+      // Uskok między podłogami pokoi (np. korytarz na poziomie terenu, pokój wyżej, bez narysowanych
+      // schodków) – do CLIMB, jakby w drzwiach były stopnie.
+      const h = floorHit(W.pos.x + mx, W.pos.z + mz, W.target + CLIMB);
+      if (!h) continue;
+      const up = h.point.y - W.target;
+      if (up > STEP && !climbable(h)) continue;
       W.pos.x += mx; W.pos.z += mz;
-      W.target = f;
+      W.target = h.point.y;
+      standOn(h);
       return true;
     }
     return false;
@@ -1277,15 +1313,8 @@
     sendWalker();
   }
   // Kondygnacja, na której stoi człowiek – do znacznika na rzucie i przełączenia rzutu.
-  function walkerLevel() {
-    const p = App.project, cm = W.pos.y * 100 + 40;
-    let lv = 0;
-    p.levels.forEach((_, i) => { if (App.elevation(i) <= cm) lv = i; });
-    if (p.levels.every((_, i) => App.elevation(i) > cm)) lv = p.levels.reduce((m, _, i) => App.elevation(i) < App.elevation(m) ? i : m, 0);
-    return lv;
-  }
   function sendWalker() {
-    const level = walkerLevel();
+    const level = G.clamp(W.level == null ? App.project.current : W.level, 0, App.project.levels.length - 1);
     const w = { x: Math.round(W.pos.x * 100), y: Math.round(W.pos.z * 100), yaw: W.yaw, fov: camera.fov * camera.aspect, level };
     const key = `${w.x},${w.y},${w.yaw.toFixed(2)},${level}`;
     if (key === W.sent) return;
@@ -1334,8 +1363,10 @@
     W.on = true;
     W.goal = null;
     W.pos = pt.clone();
-    const f = floorBelow(pt.x, pt.z, pt.y + STEP);
-    W.target = f == null ? pt.y : f;
+    W.level = App.project.current;
+    const h = floorHit(pt.x, pt.z, pt.y + STEP);
+    W.target = h ? h.point.y : pt.y;
+    if (h) standOn(h);
     controls.enabled = false;
     camera.fov = 70;
     camera.near = 0.05;

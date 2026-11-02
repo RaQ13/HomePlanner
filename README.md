@@ -55,6 +55,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 - **W/S** lub **↑/↓** – naprzód i wstecz, **A/D** – krok w bok, **←/→** lub **Q/E** – obrót, **Shift** – bieg.
 - Przeciąganie myszą – rozglądanie się, kółko – przybliżenie, **dwuklik** – przejście we wskazane miejsce.
 - Ściany, meble i okna zatrzymują. Stopnie do 45 cm pokonuje się krokiem, więc po schodach wchodzi się na piętro, a rzut 2D przełącza się na kondygnację, na której stoisz.
+- Uskok między podłogami pokoi do 1 m (np. korytarz „na poziomie terenu” przy podniesionym parterze) przechodzi się jak po schodkach w drzwiach. Na meble tak się nie wejdzie.
 - Na rzucie widać ludzika i jego pole widzenia. Na czas spaceru drzwi są otwarte i widać cały dom.
 - **Esc** albo **Zakończ spacer** przywraca poprzedni widok.
 
