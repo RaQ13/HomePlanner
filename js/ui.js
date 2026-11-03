@@ -375,6 +375,18 @@
         spec.push({ key: 'landW', label: 'Szerokość podestu (wzdłuż 2. biegu)', unit: 'cm', min: 50, max: 500, get: () => Math.round(o.landW || o.fw), set: editSet(v => { o.landW = Math.max(v, o.fw); o.w = Math.max(o.w, o.landW + 60); }) });
       }
       spec.push({ key: 'solid', label: 'Zabudowa pod schodami', type: 'checkbox', get: () => !!o.solid, set: editSet(v => { o.solid = v; }) });
+      // Poręcz: strona (proste – jedna / druga; L i U – od oka schodów / od zewnątrz), rodzaj, wysokość, tekstura.
+      const sides = shape === 'straight'
+        ? [['in', 'z jednej strony'], ['out', 'z drugiej strony'], ['both', 'z obu stron'], ['none', 'brak']]
+        : [['in', 'od wewnątrz (oko schodów)'], ['out', 'od zewnątrz'], ['both', 'z obu stron'], ['none', 'brak']];
+      spec.push({ key: 'rail', label: 'Poręcz', type: 'select', options: sides, get: () => o.rail || 'in', set: editSet(v => { o.rail = v; }) });
+      if ((o.rail || 'in') !== 'none') {
+        spec.push(
+          { key: 'railType', label: 'Rodzaj poręczy', type: 'select', options: [['bar', 'pręt na słupkach'], ['wall', 'ścianka (balustrada pełna)']], get: () => o.railType || 'bar', set: editSet(v => { o.railType = v; }) },
+          { key: 'railH', label: 'Wysokość poręczy', unit: 'cm', min: 30, max: 200, get: () => o.railH || 90, set: editSet(v => { o.railH = v; }) },
+          ...texFields(o, 'texRail', 'Tekstura poręczy'),
+        );
+      }
       if (shape !== 'straight') spec.push({ key: 'flip', label: 'Skręt w drugą stronę', type: 'checkbox', get: () => !!o.flip, set: editSet(v => { o.flip = v; }) });
       spec.push(
         { key: 'rot', label: 'Obrót', unit: '°', min: -360, max: 360, step: 15, get: () => o.rot, set: editSet(v => { o.rot = v; }) },

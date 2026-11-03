@@ -176,13 +176,48 @@
     objs.forEach(o => walk(o, true));
     return out;
   }
+  // Dzieli siatkę na trójkąty bez tekstury (grupa 0, dotychczasowy materiał) i z teksturą (grupa 1).
+  function splitFaces(m, M, faces, tile) {
+    const base = Array.isArray(m.material) ? m.material[0] : m.material, top = Array.isArray(m.material) ? m.material[1] : m.material;
+    return groupFaces(m, M, faces, base, texMaterial(tile, top));
+  }
+  // Grupy materiałów siatki: trójkąty spełniające faces(n) – matKeep, pozostałe – matRest.
+  function groupFaces(m, M, faces, matRest, matKeep) {
+    const geo = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry;
+    const pos = geo.attributes.position, nor = geo.attributes.normal, n = pos.count / 3;
+    const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3();
+    const keep = [], rest = [];
+    for (let t = 0; t < n; t++) {
+      A.fromBufferAttribute(pos, t * 3).applyMatrix4(M); B.fromBufferAttribute(pos, t * 3 + 1).applyMatrix4(M); C.fromBufferAttribute(pos, t * 3 + 2).applyMatrix4(M);
+      (faces(B.sub(A).cross(C.sub(A)).normalize()) ? keep : rest).push(t);
+    }
+    if (!keep.length) return false;
+    const order = rest.concat(keep);
+    const re = (attr) => {
+      const out = new Float32Array(attr.count * attr.itemSize), w = attr.itemSize * 3;
+      order.forEach((t, j) => out.set(attr.array.subarray(t * w, t * w + w), j * w));
+      return new THREE.BufferAttribute(out, attr.itemSize);
+    };
+    const g2 = new THREE.BufferGeometry();
+    g2.setAttribute('position', re(pos));
+    if (nor) g2.setAttribute('normal', re(nor));
+    g2.addGroup(0, rest.length * 3, 0);
+    g2.addGroup(rest.length * 3, keep.length * 3, 1);
+    m.geometry.dispose();
+    if (geo !== m.geometry) geo.dispose();
+    m.geometry = g2;
+    m.material = [matRest, matKeep];
+    return true;
+  }
   // Nakłada teksturę: UV w płaszczyźnie każdego trójkąta (u – poziomo wzdłuż powierzchni, v – w górę spadku),
   // w cm układu frame. Powielanie – wzór co size × scale; rozciąganie – raz na każdą płaską powierzchnię.
-  function applyTexture(meshes, assign, frame) {
+  // faces(n) – tylko trójkąty o normalnej n (w układzie frame) spełniającej warunek dostają teksturę (grupa materiału 1).
+  function applyTexture(meshes, assign, frame, faces) {
     const tile = App.texTile(assign);
     if (!tile || !meshes.length) return;
     root.updateMatrixWorld(true);
     const inv = frame.matrixWorld.clone().invert();
+    if (faces) meshes = meshes.filter(m => splitFaces(m, new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld), faces, tile));
     const tw = tile.tw, th = tile.th, stretch = assign.mode === 'stretch';
     const up = new THREE.Vector3(0, 1, 0), X = new THREE.Vector3(1, 0, 0);
     const P = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()], e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
@@ -201,7 +236,7 @@
         recs.push({ uv, k, st: P.map(v => [v.dot(tu), v.dot(tv)]), key: [n.x, n.y, n.z].map(x => Math.round(x * 50)).join() + '|' + Math.round(n.dot(P[0])) });
       }
       geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-      m.material = texMaterial(tile, m.material);
+      if (!Array.isArray(m.material)) m.material = texMaterial(tile, m.material);
     });
     const bounds = {};
     if (stretch) recs.forEach(r => {
@@ -271,8 +306,8 @@
       const pk = App.selection && pickOf(o);
       if (!pk || pk.id !== App.selection) return;
       o.userData.baseMat = o.material;
-      o.material = o.material.clone();
-      if (o.material.emissive) { o.material.emissive.set('#2563eb'); o.material.emissiveIntensity = 0.45; }
+      const hl = (x) => { x = x.clone(); if (x.emissive) { x.emissive.set('#2563eb'); x.emissiveIntensity = 0.45; } return x; };
+      o.material = Array.isArray(o.material) ? o.material.map(hl) : hl(o.material);
     });
   }
   V.setPick = (on) => {
@@ -364,7 +399,8 @@
         const lift = (i === 0 ? 1 : 0.5) - fl.drop;
         const objs = tagged(g, r.id, i, () => buildFloor(g, outline, fl.thick, lift, p.levels[i - 1], r.color));
         if (only) return ghost(objs, 0.06);
-        if (r.texFloor) applyTexture(objs.filter(o => o.isMesh), r.texFloor, g);
+        // Tekstura podłogi tylko na wierzchu płyty – spód (sufit kondygnacji niżej) i krawędzie bez niej.
+        if (r.texFloor) applyTexture(objs.filter(o => o.isMesh), r.texFloor, g, (n) => n.y > 0.5);
         if (r.texCeil) {
           const c = tagged(g, r.id, i, () => buildCeiling(g, outline, App.levelHeight(lv) - 1));
           applyTexture(c.filter(o => o.isMesh), r.texCeil, g);
@@ -379,7 +415,8 @@
           g.add(sg);
           sg.userData.pick = { id: o.id, level: i };
           buildStairs(sg, o, App.levelHeight(lv) + drop);
-          if (o.tex) applyTexture(meshesOf([sg], solid), o.tex, sg);
+          if (o.tex) applyTexture(meshesOf([sg], m => solid(m) && !m.userData.rail), o.tex, sg);
+          if (o.texRail) applyTexture(meshesOf([sg], m => !!m.userData.rail), o.texRail, sg);
           return;
         }
         if (o.kind === 'furniture') {
@@ -652,6 +689,8 @@
     const m = mesh(geo, mat(color || '#dddddd'), parent);
     m.userData.slab = true; // na spacerze krawędź stropu (otwór nad schodami) nie zatrzymuje
     m.position.y = lift;
+    // Kolor pokoju tylko na wierzchu podłogi; spód (sufit kondygnacji niżej) i krawędzie – jasny tynk.
+    groupFaces(m, new THREE.Matrix4(), (n) => n.y > 0.5, mat('#ecebe6'), m.material);
   }
 
   function buildStairs(parent, o, height) {
@@ -668,20 +707,39 @@
       const top = rise * q.k, bottom = o.solid ? 0 : Math.max(0, q.landing ? top - T - 4 : top - rise - T);
       box(g, q.landing ? m3 : q.k % 2 ? m1 : m2, q.a0, q.a1, bottom, top, q.b1 - q.b0, (q.b0 + q.b1) / 2);
     });
-    // Poręcze wzdłuż biegów, 90 cm nad krawędzią stopni.
-    const rail = mat('#3f3f46', { metalness: 0.5, roughness: 0.4 });
+    // Poręcze: pręt na słupkach albo pełna ścianka (balustrada murowana), H nad krawędzią stopni, odsunięte do środka biegu.
+    const H = o.railH || 90, wall = o.railType === 'wall';
+    const rail = mat(wall ? App.project.settings.wallColor : '#3f3f46', wall ? {} : { metalness: 0.5, roughness: 0.4 });
     lay.rails.forEach(r => {
-      const p0 = new THREE.Vector3(r.a0, r.k0 * rise + 90, r.b0), p1 = new THREE.Vector3(r.a1, r.k1 * rise + 90, r.b1);
-      const len = p0.distanceTo(p1);
+      const da = r.a1 - r.a0, db = r.b1 - r.b0, len = Math.hypot(da, db);
       if (len < 1) return;
-      const bar = mesh(new THREE.BoxGeometry(len, 4, 4), rail, g);
+      const y0 = r.k0 * rise, y1 = r.k1 * rise;
+      if (wall) {
+        const t = 10, ins = t / 2;
+        // Spód ścianki biegnie pod stopniami (albo od podłogi przy zabudowie), góra – H nad krawędzią stopni.
+        const lo = (y) => (o.solid ? 0 : Math.max(0, y - rise - T));
+        const shape = new THREE.Shape([new THREE.Vector2(0, lo(y0)), new THREE.Vector2(len, lo(y1)), new THREE.Vector2(len, y1 + H), new THREE.Vector2(0, y0 + H)]);
+        const geo = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false });
+        geo.translate(0, 0, -t / 2);
+        const m = mesh(geo, rail, g);
+        m.rotation.y = -Math.atan2(db, da);
+        m.position.set(r.a0 + r.ia * ins, 0, r.b0 + r.ib * ins);
+        m.userData.rail = true;
+        return;
+      }
+      const ins = 3;
+      const p0 = new THREE.Vector3(r.a0 + r.ia * ins, y0 + H, r.b0 + r.ib * ins), p1 = new THREE.Vector3(r.a1 + r.ia * ins, y1 + H, r.b1 + r.ib * ins);
+      const bar = mesh(new THREE.BoxGeometry(p0.distanceTo(p1), 4, 4), rail, g);
       bar.position.copy(p0).lerp(p1, 0.5);
       bar.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), p1.clone().sub(p0).normalize());
-      [0.05, 0.5, 0.95].forEach(t => {
-        const q = p0.clone().lerp(p1, t);
-        const post = mesh(new THREE.BoxGeometry(3, 92, 3), rail, g);
-        post.position.set(q.x, q.y - 45, q.z);
-      });
+      bar.userData.rail = true;
+      const n = Math.max(2, Math.round(len / 120) + 1);
+      for (let j = 0; j < n; j++) {
+        const q = p0.clone().lerp(p1, (0.05 + 0.9 * j / (n - 1)));
+        const post = mesh(new THREE.BoxGeometry(3, H + 2, 3), rail, g);
+        post.position.set(q.x, q.y - H / 2, q.z);
+        post.userData.rail = true;
+      }
     });
   }
 
@@ -1310,8 +1368,9 @@
     r.far = d + RADIUS;
     for (const hgt of BODY) {
       r.set(new THREE.Vector3(pos.x, hi + hgt, pos.z), dir);
-      // Wyżej niż kolana schody nad głową nie zatrzymują – pod biegiem i spocznikiem człowiek się schyla.
-      if (r.intersectObject(root, true).some(h => h.object.isMesh && h.object.visible && !h.object.userData.slab && (hgt < 1 || !isStairs(h.object)))) return true;
+      // Stopnie nie zatrzymują (także strome schody – o wejściu decyduje wysokość kroku, a z boku w bieg się nie
+      // wejdzie, bo krok byłby za wysoki); pod biegiem i spocznikiem człowiek się schyla. Zatrzymuje ścianka balustrady.
+      if (r.intersectObject(root, true).some(h => h.object.isMesh && h.object.visible && !h.object.userData.slab && (h.object.userData.rail || !isStairs(h.object)))) return true;
     }
     return false;
   }

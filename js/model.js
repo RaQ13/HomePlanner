@@ -487,7 +487,8 @@ window.App = window.App || {};
 
   // Rozkład schodów w układzie lokalnym (a – wzdłuż l, b – wzdłuż w, środek w 0,0).
   // parts: prostokąty stopni/podestów z numerem k (wysokość = k * wysokość stopnia),
-  // path: linia biegu do strzałki, rails: odcinki poręczy {a0,b0,k0,a1,b1,k1}.
+  // path: linia biegu do strzałki, rails: odcinki poręczy {a0,b0,k0,a1,b1,k1, side: 'in'|'out', ia,ib – kierunek
+  // do wnętrza biegu (odsunięcie poręczy od krawędzi)}. in – od strony oka schodów (prostych: jedna strona), out – druga.
   App.stairLayout = (o) => {
     const shape = o.shape || 'straight', hl = o.l / 2, hw = o.w / 2;
     let N = Math.max(2, o.steps | 0);
@@ -503,8 +504,14 @@ window.App = window.App || {};
       parts.push({ a0: hl - land, a1: hl, b0: -hw, b1: hw, k: n1 + 1, landing: true });
       for (let k = 0; k < n2; k++) parts.push({ a0: hl - land - (k + 1) * r2, a1: hl - land - k * r2, b0: hw - fw, b1: hw, k: n1 + 2 + k });
       path = [[-hl + r1 / 2, -hw + fw / 2], [hl - land / 2, -hw + fw / 2], [hl - land / 2, hw - fw / 2], [-hl, hw - fw / 2]];
-      rails.push({ a0: -hl, b0: -hw + fw, k0: 0, a1: hl - land, b1: -hw + fw, k1: n1 });
-      rails.push({ a0: hl - land, b0: hw - fw, k0: n1 + 1, a1: -hl, b1: hw - fw, k1: N });
+      rails.push({ side: 'in', a0: -hl, b0: -hw + fw, k0: 0, a1: hl - land, b1: -hw + fw, k1: n1, ia: 0, ib: -1 });
+      rails.push({ side: 'in', a0: hl - land, b0: hw - fw, k0: n1 + 1, a1: -hl, b1: hw - fw, k1: N, ia: 0, ib: 1 });
+      if (hw - fw > 3) rails.push({ side: 'in', a0: hl - land, b0: -hw + fw, k0: n1 + 1, a1: hl - land, b1: hw - fw, k1: n1 + 1, ia: 1, ib: 0 });
+      rails.push({ side: 'out', a0: -hl, b0: -hw, k0: 0, a1: hl - land, b1: -hw, k1: n1, ia: 0, ib: 1 });
+      rails.push({ side: 'out', a0: hl - land, b0: -hw, k0: n1 + 1, a1: hl, b1: -hw, k1: n1 + 1, ia: 0, ib: 1 });
+      rails.push({ side: 'out', a0: hl, b0: -hw, k0: n1 + 1, a1: hl, b1: hw, k1: n1 + 1, ia: -1, ib: 0 });
+      rails.push({ side: 'out', a0: hl, b0: hw, k0: n1 + 1, a1: hl - land, b1: hw, k1: n1 + 1, ia: 0, ib: -1 });
+      rails.push({ side: 'out', a0: hl - land, b0: hw, k0: n1 + 1, a1: -hl, b1: hw, k1: N, ia: 0, ib: -1 });
     } else if (shape === 'L') {
       N = Math.max(4, N);
       // Podest w narożniku: land – długość (wzdłuż pierwszego biegu), landW – szerokość (wzdłuż drugiego);
@@ -517,20 +524,27 @@ window.App = window.App || {};
       parts.push({ a0: hl - land, a1: hl, b0: -hw, b1: -hw + landW, k: n1 + 1, landing: true });
       for (let k = 0; k < n2; k++) parts.push({ a0: hl - fw, a1: hl, b0: -hw + landW + k * r2, b1: -hw + landW + (k + 1) * r2, k: n1 + 2 + k });
       path = [[-hl + r1 / 2, -hw + fw / 2], [hl - fw / 2, -hw + fw / 2], [hl - fw / 2, hw]];
-      rails.push({ a0: -hl, b0: -hw + fw, k0: 0, a1: hl - land, b1: -hw + fw, k1: n1 });
-      rails.push({ a0: hl - fw, b0: -hw + landW, k0: n1 + 1, a1: hl - fw, b1: hw, k1: N });
+      rails.push({ side: 'in', a0: -hl, b0: -hw + fw, k0: 0, a1: hl - land, b1: -hw + fw, k1: n1, ia: 0, ib: -1 });
+      rails.push({ side: 'in', a0: hl - fw, b0: -hw + landW, k0: n1 + 1, a1: hl - fw, b1: hw, k1: N, ia: 1, ib: 0 });
+      rails.push({ side: 'out', a0: -hl, b0: -hw, k0: 0, a1: hl - land, b1: -hw, k1: n1, ia: 0, ib: 1 });
+      rails.push({ side: 'out', a0: hl - land, b0: -hw, k0: n1 + 1, a1: hl, b1: -hw, k1: n1 + 1, ia: 0, ib: 1 });
+      rails.push({ side: 'out', a0: hl, b0: -hw, k0: n1 + 1, a1: hl, b1: -hw + landW, k1: n1 + 1, ia: -1, ib: 0 });
+      rails.push({ side: 'out', a0: hl, b0: -hw + landW, k0: n1 + 1, a1: hl, b1: hw, k1: N, ia: -1, ib: 0 });
     } else {
       const run = o.l / N;
       for (let k = 0; k < N; k++) parts.push({ a0: -hl + k * run, a1: -hl + (k + 1) * run, b0: -hw, b1: hw, k: k + 1 });
       path = [[-hl + run / 2, 0], [hl, 0]];
-      rails.push({ a0: -hl, b0: hw - 3, k0: 0, a1: hl, b1: hw - 3, k1: N });
+      rails.push({ side: 'in', a0: -hl, b0: hw, k0: 0, a1: hl, b1: hw, k1: N, ia: 0, ib: -1 });
+      rails.push({ side: 'out', a0: -hl, b0: -hw, k0: 0, a1: hl, b1: -hw, k1: N, ia: 0, ib: 1 });
     }
     if (o.flip) {
       parts.forEach(q => { [q.b0, q.b1] = [-q.b1, -q.b0]; });
       path.forEach(q => { q[1] = -q[1]; });
-      rails.forEach(q => { q.b0 = -q.b0; q.b1 = -q.b1; });
+      rails.forEach(q => { q.b0 = -q.b0; q.b1 = -q.b1; q.ib = -q.ib; });
     }
-    return { N, parts, path, rails };
+    // Wybór poręczy: o.rail – 'in' (domyślnie), 'out', 'both', 'none'.
+    const pick = o.rail || 'in';
+    return { N, parts, path, rails: rails.filter(q => pick === 'both' || q.side === pick) };
   };
 
   // Przy zmianie kształtu dopasuj szerokość całkowitą do szerokości biegu.

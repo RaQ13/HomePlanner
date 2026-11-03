@@ -69,7 +69,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 | Pokój | R | Prostokątny pokój ze ścianami |
 | Pokój dowolny | P | Pokój o dowolnym obrysie |
 | Drzwi / Okno | D / O | Otwór w ścianie; szerokość, wysokość, parapet i próg ustawiasz we Właściwościach |
-| Schody | S | Schody proste, L i U z obliczaniem stopni; wysokość spocznika do ustawienia, pod biegiem wolne miejsce, opcja „Zabudowa pod schodami” |
+| Schody | S | Schody proste, L i U z obliczaniem stopni; wysokość spocznika, poręcz (strona, pręt albo ścianka, wysokość, tekstura), pod biegiem wolne miejsce albo „Zabudowa pod schodami” |
 | Komin | K | Komin przechodzący przez kondygnacje i dach |
 | Okno dachowe | L | Okno w połaci dachu |
 | Lukarna | U | Lukarna na dachu |
@@ -114,6 +114,8 @@ Do wyboru:
 - powielanie z rozmiarem kafla albo rozciąganie;
 - obrót;
 - **spoiny**: szerokość i kolor, albo brak spoin, żeby powielenie było bez kresek.
+
+- Tekstura podłogi leży tylko na wierzchu płyty. Spód stropu, czyli sufit kondygnacji niżej, ma własny kolor albo teksturę sufitu pokoju poniżej.
 
 ## Meble
 
