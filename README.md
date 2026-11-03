@@ -56,6 +56,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 - Przeciąganie myszą – rozglądanie się, kółko – przybliżenie, **dwuklik** – przejście we wskazane miejsce.
 - Ściany, meble i okna zatrzymują. Stopnie do 45 cm pokonuje się krokiem, więc po schodach wchodzi się na piętro, a rzut 2D przełącza się na kondygnację, na której stoisz.
 - Uskok między podłogami pokoi do 1 m (np. korytarz „na poziomie terenu” przy podniesionym parterze) przechodzi się jak po schodkach w drzwiach. Na meble tak się nie wejdzie.
+- Pod niskim spocznikiem albo skosem ludzik się schyla. Zatrzymuje się dopiero, gdy wolnej wysokości jest mniej niż 1,2 m. Przez otwór w stropie nad schodami do piwnicy można zejść na schody.
 - Na rzucie widać ludzika i jego pole widzenia. Na czas spaceru drzwi są otwarte i widać cały dom.
 - **Esc** albo **Zakończ spacer** przywraca poprzedni widok.
 
@@ -68,7 +69,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 | Pokój | R | Prostokątny pokój ze ścianami |
 | Pokój dowolny | P | Pokój o dowolnym obrysie |
 | Drzwi / Okno | D / O | Otwór w ścianie; szerokość, wysokość, parapet i próg ustawiasz we Właściwościach |
-| Schody | S | Schody proste z obliczaniem stopni |
+| Schody | S | Schody proste, L i U z obliczaniem stopni; pod biegiem wolne miejsce, opcja „Zabudowa pod schodami” |
 | Komin | K | Komin przechodzący przez kondygnacje i dach |
 | Okno dachowe | L | Okno w połaci dachu |
 | Lukarna | U | Lukarna na dachu |

@@ -374,6 +374,7 @@
         spec.push({ key: 'land', label: 'Długość podestu (wzdłuż 1. biegu)', unit: 'cm', min: 50, max: 500, get: () => Math.round(o.land || o.fw), set: editSet(v => { o.land = Math.max(v, o.fw); o.l = Math.max(o.l, o.land + 60); }) });
         spec.push({ key: 'landW', label: 'Szerokość podestu (wzdłuż 2. biegu)', unit: 'cm', min: 50, max: 500, get: () => Math.round(o.landW || o.fw), set: editSet(v => { o.landW = Math.max(v, o.fw); o.w = Math.max(o.w, o.landW + 60); }) });
       }
+      spec.push({ key: 'solid', label: 'Zabudowa pod schodami', type: 'checkbox', get: () => !!o.solid, set: editSet(v => { o.solid = v; }) });
       if (shape !== 'straight') spec.push({ key: 'flip', label: 'Skręt w drugą stronę', type: 'checkbox', get: () => !!o.flip, set: editSet(v => { o.flip = v; }) });
       spec.push(
         { key: 'rot', label: 'Obrót', unit: '°', min: -360, max: 360, step: 15, get: () => o.rot, set: editSet(v => { o.rot = v; }) },

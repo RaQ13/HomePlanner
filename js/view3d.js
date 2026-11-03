@@ -322,6 +322,7 @@
         m.add(e);
       });
     };
+    terrainHoles(p);
     // Na kondygnacji podziemnej teren jest półprzezroczysty, żeby było widać piwnicę.
     const underground = App.elevation(p.current) < 0;
     Object.assign(terrain.material, { transparent: underground, opacity: underground ? 0.3 : 1, depthWrite: !underground });
@@ -404,6 +405,33 @@
         if (r.tex) objs.forEach(x => applyTexture(meshesOf([x], m => !!m.material.polygonOffset), r.tex, x));
       });
     }
+  }
+
+  // Teren nie przecina piwnicy: obrys pokoi kondygnacji podziemnych zapisany w buforze szablonu (stencil)
+  // wycina tam teren – widok przez otwór nad schodami i spacer po piwnicy. Pokoje mogą się stykać i nakładać.
+  let terrainKey = '', terrainMask = null;
+  App.undergroundAt = (pt) => App.project.levels.some((l, i) => App.elevation(i) < 0 && l.rooms.some(r => r.pts.length >= 3 && G.inside(pt, r.pts)));
+  function terrainHoles(p) {
+    const rooms = p.levels.flatMap((l, i) => (App.elevation(i) < 0 ? l.rooms : [])).filter(r => r.pts.length >= 3);
+    const key = JSON.stringify(rooms.map(r => r.pts));
+    if (key === terrainKey) return;
+    terrainKey = key;
+    if (!terrainMask) {
+      terrainMask = new THREE.Group();
+      scene.add(terrainMask);
+      Object.assign(terrain.material, { stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc });
+    }
+    terrainMask.children.slice().forEach(m => { terrainMask.remove(m); m.geometry.dispose(); });
+    const mm = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide,
+      stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp });
+    rooms.forEach(r => {
+      const geo = new THREE.ShapeGeometry(new THREE.Shape(r.pts.map(q => new THREE.Vector2(q.x / 100, q.y / 100))));
+      geo.rotateX(Math.PI / 2);
+      const m = new THREE.Mesh(geo, mm);
+      m.renderOrder = -10;
+      m.position.y = 0.001;
+      terrainMask.add(m);
+    });
   }
 
   function buildWall(parent, lv, w, wallMat, i) {
@@ -632,7 +660,13 @@
     g.rotation.y = -o.rot * Math.PI / 180;
     parent.add(g);
     const m1 = mat('#b49a7a'), m2 = mat('#8d7457'), m3 = mat('#a38b6d');
-    lay.parts.forEach(q => box(g, q.landing ? m3 : q.k % 2 ? m1 : m2, q.a0, q.a1, 0, rise * q.k, q.b1 - q.b0, (q.b0 + q.b1) / 2));
+    // Stopnie i spoczniki jako płyty – pod biegiem zostaje wolne miejsce (np. zejście do piwnicy pod schodami);
+    // „Zabudowa pod schodami” – bryła pełna do podłogi.
+    const T = 18;
+    lay.parts.forEach(q => {
+      const top = rise * q.k, bottom = o.solid ? 0 : Math.max(0, q.landing ? top - T - 4 : top - rise - T);
+      box(g, q.landing ? m3 : q.k % 2 ? m1 : m2, q.a0, q.a1, bottom, top, q.b1 - q.b0, (q.b0 + q.b1) / 2);
+    });
     // Poręcze wzdłuż biegów, 90 cm nad krawędzią stopni.
     const rail = mat('#3f3f46', { metalness: 0.5, roughness: 0.4 });
     lay.rails.forEach(r => {
@@ -1239,7 +1273,7 @@
   // Pozycja stóp w metrach (świat), kierunek patrzenia yaw/pitch. Ściany, meble i okna zatrzymują,
   // stopnie do 45 cm pokonuje się krokiem – po schodach wchodzi się na wyższą kondygnację.
   const W = { on: false, pos: null, yaw: 0, pitch: 0, keys: new Set(), saved: null, goal: null, sent: '' };
-  const EYE = 1.65, STEP = 0.45, CLIMB = 1.0, RADIUS = 0.28, BODY = [0.5, 0.8, 1.1, 1.6];
+  const EYE = 1.65, STEP = 0.45, CLIMB = 1.0, RADIUS = 0.28, BODY = [0.5, 0.8, 1.1, 1.3];
   V.walking = () => W.on;
   const caster = () => { const r = new THREE.Raycaster(); r.firstHitOnly = true; return r; };
   const upNormal = (h) => h.face && h.face.normal.clone().transformDirection(h.object.matrixWorld).y;
@@ -1250,6 +1284,8 @@
     r.far = 60;
     for (const h of r.intersectObjects([root, terrain], true)) {
       if (!h.object.isMesh || !h.object.visible) continue;
+      // Nad piwnicą teren nie istnieje (zejście przez otwór w stropie na schody).
+      if (h.object === terrain && App.undergroundAt({ x: h.point.x * 100, y: h.point.z * 100 })) continue;
       if (upNormal(h) > 0.5) return h;
     }
     return null;
@@ -1272,10 +1308,24 @@
     const r = caster();
     r.far = d + RADIUS;
     for (const hgt of BODY) {
-      r.set(new THREE.Vector3(pos.x, (hgt < 1.5 ? hi : lo) + hgt, pos.z), dir);
-      if (r.intersectObject(root, true).some(h => h.object.isMesh && h.object.visible && !h.object.userData.slab)) return true;
+      r.set(new THREE.Vector3(pos.x, hi + hgt, pos.z), dir);
+      // Wyżej niż kolana schody nad głową nie zatrzymują – pod biegiem i spocznikiem człowiek się schyla.
+      if (r.intersectObject(root, true).some(h => h.object.isMesh && h.object.visible && !h.object.userData.slab && (hgt < 1 || !isStairs(h.object)))) return true;
     }
     return false;
+  }
+  function isStairs(obj) {
+    const pk = pickOf(obj), lv = pk && App.project.levels[pk.level];
+    const f = lv && App.find(pk.id, lv);
+    return !!f && f.obj.kind === 'stairs';
+  }
+  // Wolna wysokość nad podłogą y w punkcie (x, z) – do schylania się i zatrzymania pod zbyt niską przeszkodą.
+  function clearance(x, z, y) {
+    const r = caster();
+    r.set(new THREE.Vector3(x, y + 0.3, z), new THREE.Vector3(0, 1, 0));
+    r.far = EYE + 0.5;
+    const h = r.intersectObject(root, true).find(q => q.object.isMesh && q.object.visible && !q.object.material.transparent);
+    return h ? h.point.y - y : Infinity;
   }
   // Powierzchnia, na którą można wejść większym krokiem (do CLIMB): podłoga pokoju, ściana pod progiem, teren,
   // nawierzchnia – ale nie mebel, schody czy komin.
@@ -1318,6 +1368,7 @@
       if (!h) continue;
       const up = h.point.y - W.target;
       if (up > STEP && !climbable(h)) continue;
+      if (clearance(W.pos.x + mx, W.pos.z + mz, h.point.y) < 1.2) continue;
       W.pos.x += mx; W.pos.z += mz;
       W.target = h.point.y;
       standOn(h);
@@ -1349,7 +1400,10 @@
       const dy = W.target - W.pos.y;
       W.pos.y += Math.abs(dy) < 0.01 ? dy : dy * Math.min(1, dt * (dy > 0 ? 14 : 8));
     }
-    camera.position.set(W.pos.x, W.pos.y + EYE, W.pos.z);
+    // Pod niskim stropem (spocznik, skos poddasza) człowiek się schyla – oczy 15 cm pod przeszkodą nad głową.
+    const want = G.clamp(clearance(W.pos.x, W.pos.z, W.target) - 0.15, 1.05, EYE);
+    W.eye = W.eye == null ? want : W.eye + (want - W.eye) * Math.min(1, dt * 8);
+    camera.position.set(W.pos.x, W.pos.y + W.eye, W.pos.z);
     camera.rotation.set(W.pitch, W.yaw, 0, 'YXZ');
     sendWalker();
   }
@@ -1403,6 +1457,7 @@
     W.pitch = 0;
     W.on = true;
     W.goal = null;
+    W.eye = null;
     W.pos = pt.clone();
     W.level = App.project.current;
     const h = floorHit(pt.x, pt.z, pt.y + STEP);
@@ -1460,7 +1515,7 @@
       if (!W.on) return;
       const r = el.getBoundingClientRect(), ray = caster();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
-      const h = ray.intersectObjects([root, terrain], true).find(x => x.object.isMesh && x.object.visible);
+      const h = ray.intersectObjects([root, terrain], true).find(x => x.object.isMesh && x.object.visible && !(x.object === terrain && App.undergroundAt({ x: x.point.x * 100, y: x.point.z * 100 })));
       if (!h) return;
       if (upNormal(h) > 0.5) W.goal = h.point.clone();
       else W.goal = h.point.clone().addScaledVector(ray.ray.direction, -0.4);
