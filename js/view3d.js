@@ -6,6 +6,7 @@
   const V = App.view3d = { ready: false, visible: false, pick: false };
   let THREE, renderer, scene, camera, controls, root, sun, container, terrain, grid;
   let dirty = true, framed = false;
+  let shownLast = Infinity; // najwyższa kondygnacja pokazana w 3D (szczyty dachu liczone tylko z widocznych ścian)
   const mats = {};
 
   V.init = (el) => {
@@ -291,6 +292,7 @@
     // Na spacerze widać wszystkie kondygnacje – można przejść schodami piętro wyżej.
     const mode = W.on ? 'all' : s.show3d || 'all', n = p.levels.length;
     const first = mode === 'only' ? p.current : 0, last = mode === 'all' ? n - 1 : p.current;
+    shownLast = last;
     const roofs = s.roofs3d !== false;
     // Instalacje: ściany półprzezroczyste, widać przewody i rury w ich wnętrzu (wszystkie albo jednej branży).
     // „Tylko instalacje”: budynek jako lekki szkic (ściany i stropy z krawędziami), bez mebli, schodów i dachów.
@@ -1010,9 +1012,10 @@
     };
     // Szczyt zaczyna się nad najwyższą ścianą stojącą w jego płaszczyźnie (na poddaszu – także ścianami strychu,
     // ściętymi połacią) i stoi w licu tej ściany, nawet gdy dach jest od niej trochę szerszy.
+    // Ściany ukrytych wyższych kondygnacji się nie liczą – inaczej w szczycie zostałaby dziura.
     let depth = 0, from = -Infinity, at = gb.at;
     const levels = App.project.levels;
-    levels.slice(i).forEach((l, j) => {
+    levels.slice(i, Math.max(i, shownLast) + 1).forEach((l, j) => {
       l.walls.forEach(w => {
         const f = App.wallFrame(w), c = { x: (w.x1 + w.x2) / 2, y: (w.y1 + w.y2) / 2 };
         if (onPlane(c, f.ux, f.uy, w.t) == null) return;
