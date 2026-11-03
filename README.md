@@ -103,6 +103,7 @@ Pozostałe funkcje:
 - **Poddasze**: ściany są przycinane połacią dachu.
 - Podłogę pokoju można obniżyć, np. do garażu na poziomie terenu.
 - Na rzucie widać jako podkład ściany kondygnacji poniżej.
+- Kondygnacja nie jest niższa niż jej najwyższa ściana. Gdy podniesiesz pojedyncze ściany ponad wysokość kondygnacji, strop i kondygnacje powyżej przesuwają się w górę, a na liście kondygnacji widać nową wysokość.
 
 ## Tekstury
 

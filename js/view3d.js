@@ -364,7 +364,7 @@
         if (only) return ghost(objs, 0.06);
         if (r.texFloor) applyTexture(objs.filter(o => o.isMesh), r.texFloor, g);
         if (r.texCeil) {
-          const c = tagged(g, r.id, i, () => buildCeiling(g, outline, lv.height - 1));
+          const c = tagged(g, r.id, i, () => buildCeiling(g, outline, App.levelHeight(lv) - 1));
           applyTexture(c.filter(o => o.isMesh), r.texCeil, g);
         }
       });
@@ -376,7 +376,7 @@
           sg.position.y = -drop;
           g.add(sg);
           sg.userData.pick = { id: o.id, level: i };
-          buildStairs(sg, o, lv.height + drop);
+          buildStairs(sg, o, App.levelHeight(lv) + drop);
           if (o.tex) applyTexture(meshesOf([sg], solid), o.tex, sg);
           return;
         }
@@ -677,7 +677,7 @@
         if (!at) return;
         const on = o.pts.some((q, k) => k && G.project(at.a, o.pts[k - 1], q).d < 3);
         if (!on) return;
-        const z = p.type === 'light' ? lv.height : p.z;
+        const z = p.type === 'light' ? App.levelHeight(lv) : p.z;
         tube(parent, V(at.a, o.z), V(at.a, z), d.r, cm);
         if (p.wallId) tube(parent, V(at.a, z), V(at.f, z), d.r, cm);
       });
@@ -687,11 +687,11 @@
     if (!at) return;
     if (o.type === 'light') {
       const m = mesh(new THREE.CylinderGeometry(9, 9, 2, 24), mat('#fff7e0', { emissive: '#7a6a40', roughness: 0.4 }), parent);
-      m.position.set(at.a.x, lv.height - 1, at.a.y);
+      m.position.set(at.a.x, App.levelHeight(lv) - 1, at.a.y);
       return;
     }
     if (o.type === 'riser') {
-      if (xray) tube(parent, new THREE.Vector3(at.a.x, 0, at.a.y), new THREE.Vector3(at.a.x, lv.height, at.a.y), d.r, cm);
+      if (xray) tube(parent, new THREE.Vector3(at.a.x, 0, at.a.y), new THREE.Vector3(at.a.x, App.levelHeight(lv), at.a.y), d.r, cm);
       return;
     }
     // Układ punktu: x – wzdłuż ściany, z – od lica do pomieszczenia.
@@ -910,7 +910,7 @@
   // Budowany w układzie lokalnym dachu: u – wzdłuż kalenicy (l), v – w poprzek (w), y – wysokość bezwzględna.
   function buildRoof(r, i, wallMat) {
     const lv = App.project.levels[i];
-    const top = App.elevation(i) + (lv.attic ? 0 : lv.height), base = App.roofBase(i, r);
+    const top = App.elevation(i) + (lv.attic ? 0 : App.levelHeight(lv)), base = App.roofBase(i, r);
     const ov = r.overhang || 0, tan = Math.tan(r.pitch * Math.PI / 180), hl = r.l / 2, hw = r.w / 2;
     const g = new THREE.Group();
     g.position.set(r.x, 0, r.y);

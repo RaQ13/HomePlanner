@@ -38,7 +38,7 @@ window.App = window.App || {};
   // Domyślna wysokość: ujemna liczy się od sufitu (np. –30 = 30 cm pod sufitem).
   // Warstwa instalacji w 3D: 'none' (tylko osprzęt na licu), 'all', 'el', 'wk'; xray3d – starsze projekty.
   App.inst3dLayer = (s) => s.inst3d || (s.xray3d ? 'all' : 'none');
-  App.installDefaultZ = (type, lv) => { const z = App.installDef(type).z; return z < 0 ? lv.height + z : z; };
+  App.installDefaultZ = (type, lv) => { const z = App.installDef(type).z; return z < 0 ? App.levelHeight(lv) + z : z; };
 
   App.makeInstall = (type, lv, at) => {
     const d = App.installDef(type), o = { id: App.uid(), kind: 'install', type, z: App.installDefaultZ(type, lv) };

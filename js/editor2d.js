@@ -1402,7 +1402,7 @@
     };
   }
   // Wysokość instalacji: w dolnej połowie kondygnacji od podłogi, w górnej – od sufitu.
-  const instHeight = (lv, z) => (z > lv.height / 2 ? `${fmtCm(lv.height - z)} od sufitu` : `h=${fmtCm(z)}`);
+  const instHeight = (lv, z) => { const H = App.levelHeight(lv); return z > H / 2 ? `${fmtCm(H - z)} od sufitu` : `h=${fmtCm(z)}`; };
   const upright = (ang) => { if (ang > Math.PI / 2 + 1e-3) ang -= Math.PI; if (ang <= -Math.PI / 2 + 1e-3) ang += Math.PI; return ang; };
   // Wymiary instalacji: trasy – długości odcinków i całej trasy z wysokością; punkty na ścianie – odległość
   // od najbliższego lica ściany poprzecznej i wysokość; punkty swobodne – odległości od ścian w obu osiach.
@@ -1582,7 +1582,7 @@
     // Schody: liczba i wymiar stopni.
     lv.objects.filter(o => o.kind === 'stairs').forEach(o => {
       const lay = App.stairLayout(o), q = lay.parts[0];
-      label(o.x, o.y, `${lay.N} × ${fmtCm(lv.height / lay.N)}/${fmtCm(q.a1 - q.a0)}`, { font: '9.5px system-ui, sans-serif', color: '#111', bg: 'rgba(255,255,255,0.85)' });
+      label(o.x, o.y, `${lay.N} × ${fmtCm(App.levelHeight(lv) / lay.N)}/${fmtCm(q.a1 - q.a0)}`, { font: '9.5px system-ui, sans-serif', color: '#111', bg: 'rgba(255,255,255,0.85)' });
     });
   }
   function drawTitle(lv) {
@@ -1595,7 +1595,7 @@
     ctx.fillText(`RZUT – ${lv.name.toUpperCase()}`, 14, 12);
     ctx.font = '11px system-ui, sans-serif';
     ctx.fillStyle = '#374151';
-    ctx.fillText(`poziom podłogi ${el > 0 ? '+' : el < 0 ? '' : '±'}${e} m · wys. kondygnacji ${fmtCm(lv.height)} cm · wymiary w cm`, 14, 30);
+    ctx.fillText(`poziom podłogi ${el > 0 ? '+' : el < 0 ? '' : '±'}${e} m · wys. kondygnacji ${fmtCm(App.levelHeight(lv))} cm · wymiary w cm`, 14, 30);
     if (E.instOn() && lv.installs.some(E.instVisible)) {
       const l = E.instLayer === 'el' ? 'elektryczna' : E.instLayer === 'wk' ? 'wodno-kanalizacyjna' : 'elektryczna i wodno-kanalizacyjna';
       ctx.fillText(`instalacja ${l}`, 14, 46);
@@ -1691,7 +1691,7 @@
     label(c.x, c.y, r.name, { font: '600 12px system-ui, sans-serif', color: '#1f2937', dy: -8 });
     label(c.x, c.y, App.roomNetArea(lv, r).toFixed(2).replace('.', ',') + ' m²', { color: '#4b5563', dy: 8 });
     const dr = App.roomDrop(r, App.project.current);
-    if (E.tech) label(c.x, c.y, 'h = ' + fmtM(lv.height + dr), { color: '#4b5563', font: '10px system-ui, sans-serif', dy: dr ? 36 : 22 });
+    if (E.tech) label(c.x, c.y, 'h = ' + fmtM(App.levelHeight(lv) + dr), { color: '#4b5563', font: '10px system-ui, sans-serif', dy: dr ? 36 : 22 });
     const drop = App.roomDrop(r, App.project.current);
     if (drop) label(c.x, c.y, r.atGround ? 'na poziomie terenu' : 'podłoga −' + (drop / 100).toFixed(2).replace('.', ',') + ' m', { color: '#9a3412', font: '10px system-ui, sans-serif', dy: 22 });
   }

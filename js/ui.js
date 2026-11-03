@@ -64,7 +64,7 @@
       const row = h('div', { className: 'level' + (i === p.current ? ' active' : ''), onclick: (e) => { if (e.target.tagName !== 'INPUT' && i !== p.current) App.setLevel(i); } },
         h('span', { className: 'lv-elev', title: 'Rzędna podłogi' }, (App.elevation(i) / 100).toFixed(2).replace('.', ',') + (lv.attic ? ' ⌂' : '')),
         h('input', { className: 'lv-name', value: lv.name, title: 'Nazwa kondygnacji', onfocus: () => { if (i !== p.current) App.setLevel(i); }, onchange: (e) => App.edit(() => { lv.name = e.target.value || lv.name; }) }),
-        h('input', { className: 'lv-h', type: 'number', min: 150, max: 600, step: 5, value: lv.height, title: 'Wysokość kondygnacji [cm]', onchange: (e) => App.edit(() => { lv.height = G.clamp(+e.target.value || 270, 150, 600); }) }),
+        h('input', { className: 'lv-h', type: 'number', min: 150, max: 600, step: 5, value: App.levelHeight(lv), title: App.levelHeight(lv) > lv.height ? `Wysokość kondygnacji [cm] – podniesiona do najwyższej ściany (ustawiona: ${lv.height})` : 'Wysokość kondygnacji [cm]', onchange: (e) => App.edit(() => { lv.height = G.clamp(+e.target.value || 270, 150, 600); }) }),
       );
       box.append(row);
     }
@@ -377,11 +377,11 @@
       if (shape !== 'straight') spec.push({ key: 'flip', label: 'Skręt w drugą stronę', type: 'checkbox', get: () => !!o.flip, set: editSet(v => { o.flip = v; }) });
       spec.push(
         { key: 'rot', label: 'Obrót', unit: '°', min: -360, max: 360, step: 15, get: () => o.rot, set: editSet(v => { o.rot = v; }) },
-        { label: 'Wys. stopnia', type: 'info', get: () => (lv.height / lay.N).toFixed(1).replace('.', ',') + ' cm' },
+        { label: 'Wys. stopnia', type: 'info', get: () => (App.levelHeight(lv) / lay.N).toFixed(1).replace('.', ',') + ' cm' },
         { label: 'Głęb. stopnia', type: 'info', get: () => (first.a1 - first.a0).toFixed(1).replace('.', ',') + ' cm' },
       );
       spec.push(...texFields(o, 'tex', 'Tekstura'));
-      if (shape !== 'straight') spec.push({ label: 'Podest na', type: 'info', get: () => (lay.parts.find(q => q.landing).k * lv.height / lay.N / 100).toFixed(2).replace('.', ',') + ' m' });
+      if (shape !== 'straight') spec.push({ label: 'Podest na', type: 'info', get: () => (lay.parts.find(q => q.landing).k * App.levelHeight(lv) / lay.N / 100).toFixed(2).replace('.', ',') + ' m' });
       return form('Schody', spec, [h('button', { onclick: E.rotate }, 'Obróć 90° (T)'), h('button', { onclick: E.mirror }, 'Odbij (M)'), del]);
     }
     if (sel.kind === 'object' && o.kind === 'dormer') {

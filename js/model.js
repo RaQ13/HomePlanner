@@ -102,7 +102,7 @@ window.App = window.App || {};
   App.elevation = (i) => {
     const p = App.project, g = p.ground || 0;
     let e = 0;
-    for (let k = Math.min(i, g); k < Math.max(i, g); k++) e += p.levels[k].height;
+    for (let k = Math.min(i, g); k < Math.max(i, g); k++) e += App.levelHeight(p.levels[k]);
     return (i < g ? -e : e) + (p.lift || 0);
   };
 
@@ -324,6 +324,9 @@ window.App = window.App || {};
     return { L, ux, uy, nx: -uy, ny: ux };
   };
   App.wallHeight = (lv, w) => w.h || lv.height;
+  // Wysokość kondygnacji w budynku (od podłogi do podłogi wyżej): nie mniejsza niż jej najwyższa ściana –
+  // ściany podniesione pojedynczo podnoszą strop i wyższe kondygnacje, sufit nie przecina pokoju.
+  App.levelHeight = (lv) => lv.walls.reduce((m, w) => Math.max(m, w.h || 0), lv.height);
   App.wallEndConnected = (lv, w, end) => {
     const x = end ? w.x2 : w.x1, y = end ? w.y2 : w.y1;
     return lv.walls.some(o => o !== w && (near(o.x1, o.y1, x, y, 1) || near(o.x2, o.y2, x, y, 1)));
@@ -830,7 +833,7 @@ window.App = window.App || {};
     if (top === -Infinity) {
       let k = i;
       levels.forEach((lv, j) => { if (j > i && lv.walls.length) k = j; });
-      top = App.elevation(k) + levels[k].height;
+      top = App.elevation(k) + App.levelHeight(levels[k]);
     }
     return top + (o.above || 0);
   };
