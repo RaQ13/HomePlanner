@@ -143,8 +143,10 @@ window.App = window.App || {};
     const under = (lower ? lower.rooms : []).map(x => clipPoly(x.pts, r.pts)).filter(q => q.length >= 3 && Math.abs(G.area(q)) > 100);
     const covered = under.reduce((s, q) => s + Math.abs(G.area(q)), 0);
     if (covered >= area * 0.98) return { drop, thick: slab };
-    if (!under.length) return { drop, thick: elev - drop };
-    return { drop, thick: slab, plinth: { holes: under, depth: elev - drop - slab } };
+    // Obok piwnicy grunt pod podłogą sięga do poziomu podłogi piwnicy (widać go z piwnicy po usunięciu ściany).
+    const low = lower && App.elevation(i - 1) < 0 ? -App.elevation(i - 1) : 0;
+    if (!under.length && !low) return { drop, thick: elev - drop };
+    return { drop, thick: slab, plinth: { holes: under, depth: elev - drop - slab + low } };
   };
   // Część wspólna dwóch wielokątów, gdy choć jeden jest wypukły (pokoje zwykle są); inaczej – cały a albo nic.
   function clipPoly(a, b) {
