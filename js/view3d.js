@@ -969,9 +969,17 @@
       faces.push([A, B, C, D], [D, C, F, E]);
       [-hl, hl].forEach(u => gables.push({ plane: 'u', at: u, poly: [[-hw, base], [hw, base], [0, yR]], topAt: (v) => base + (hw - Math.abs(v)) * tan }));
     }
-    // Otwory w połaciach pod lukarnami (w układzie lokalnym dachu: u, v).
+    // Otwory w połaciach pod lukarnami i oknami dachowymi (w układzie lokalnym dachu: u, v).
+    const local = (poly) => poly.map(p => { const q = G.toLocal(r, p); return { x: q.a, y: q.b }; });
     const holes = lv.objects.filter(o => o.kind === 'dormer').map(o => App.dormerShape(o, i))
-      .filter(ds => ds && ds.roof === r).map(ds => ds.poly.map(p => { const q = G.toLocal(r, p); return { x: q.a, y: q.b }; }));
+      .filter(ds => ds && ds.roof === r).map(ds => local(ds.poly));
+    App.project.levels.forEach((l, j) => l.objects.forEach(o => {
+      if (o.kind !== 'roofwin') return;
+      const fr = App.roofWinFrame(o, j);
+      if (!fr || fr.roof !== r) return;
+      const hp = roofWinHole(o, j);
+      if (hp) holes.push(local(hp));
+    }));
     faces.forEach(face => buildRoofFace(g, face, holes, roofMat));
     gables.forEach(gb => buildGable(g, r, i, gb, fillMat));
   }
@@ -1151,23 +1159,53 @@
   }
 
   // Okno dachowe – płaska rama ze szkłem leżąca na połaci.
-  function buildRoofWin(o, i) {
+  // Okno dachowe w układzie połaci: e1 – poziomo (szerokość l), e2 – w górę połaci (długość w), n – normalna.
+  function roofWinBasis(o, i) {
     const fr = App.roofWinFrame(o, i);
-    if (!fr) return;
+    if (!fr) return null;
     const ra = fr.rot * Math.PI / 180, cs = Math.cos(fr.slope);
     const e1 = new THREE.Vector3(Math.cos(ra), 0, Math.sin(ra));
     const e2 = new THREE.Vector3(-Math.sin(ra) * cs, Math.sin(fr.slope), Math.cos(ra) * cs);
     const n = new THREE.Vector3().crossVectors(e1, e2).normalize();
     if (n.y < 0) n.negate();
-    const C = new THREE.Vector3(o.x, fr.h, o.y);
-    const piece = (material, l, w, thick, lift) => {
+    return { fr, e1, e2, n, C: new THREE.Vector3(o.x, fr.h, o.y) };
+  }
+  // Otwór w połaci pod oknem dachowym – obrys w rzucie (x, y), trochę mniejszy niż rama, żeby nie było szczeliny.
+  function roofWinHole(o, i) {
+    const b = roofWinBasis(o, i);
+    if (!b) return null;
+    const hl = o.l / 2 - 3, hw = o.w / 2 - 3;
+    return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([s1, s2]) => {
+      const p = b.C.clone().addScaledVector(b.e1, s1 * hl).addScaledVector(b.e2, s2 * hw);
+      return { x: p.x, y: p.z };
+    });
+  }
+  function buildRoofWin(o, i) {
+    const b = roofWinBasis(o, i);
+    if (!b) return;
+    const { e1, e2, n, C } = b;
+    // Prostopadłościan w układzie okna: środek (a wzdłuż e1, c wzdłuż e2), wymiary l × w, grubość od lift.
+    const piece = (material, a, c, l, w, thick, lift) => {
       const m = mesh(new THREE.BoxGeometry(1, 1, 1), material, root);
       m.matrixAutoUpdate = false;
-      const c = C.clone().addScaledVector(n, lift + thick / 2);
-      m.matrix.makeBasis(e1.clone().multiplyScalar(l), n.clone().multiplyScalar(thick), e2.clone().multiplyScalar(w)).setPosition(c);
+      const p = C.clone().addScaledVector(e1, a).addScaledVector(e2, c).addScaledVector(n, lift + thick / 2);
+      m.matrix.makeBasis(e1.clone().multiplyScalar(l), n.clone().multiplyScalar(thick), e2.clone().multiplyScalar(w)).setPosition(p);
+      return m;
     };
-    piece(mat('#3f3f46', { roughness: 0.6 }), o.l, o.w, 8, 0);
-    piece(mat('#4f7396', { roughness: 0.1, metalness: 0.3 }), o.l - 14, o.w - 14, 2, 8);
+    // Rama (kołnierz na połaci i ościeże pod nią), w środku szyba – przez otwór w połaci widać niebo.
+    const frame = mat('#3f3f46', { roughness: 0.6 }), lining = mat('#f1efe9', { roughness: 0.8 });
+    const fw = 7, L = o.l, W = o.w;
+    piece(frame, 0, -(W - fw) / 2, L, fw, 10, -2);
+    piece(frame, 0, (W - fw) / 2, L, fw, 10, -2);
+    piece(frame, -(L - fw) / 2, 0, fw, W - 2 * fw, 10, -2);
+    piece(frame, (L - fw) / 2, 0, fw, W - 2 * fw, 10, -2);
+    // Ościeże od wewnątrz (biała podbitka grubości dachu).
+    piece(lining, 0, -(W - 2) / 2, L - 2, 2, 22, -24);
+    piece(lining, 0, (W - 2) / 2, L - 2, 2, 22, -24);
+    piece(lining, -(L - 2) / 2, 0, 2, W - 4, 22, -24);
+    piece(lining, (L - 2) / 2, 0, 2, W - 4, 22, -24);
+    const glass = piece(mat('#9cc7e6', { transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0.1, depthWrite: false }), 0, 0, L - 2 * fw, W - 2 * fw, 1, 3);
+    glass.castShadow = false;
   }
 
   // ---------- Kamera ----------
