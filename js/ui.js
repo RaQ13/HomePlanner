@@ -382,7 +382,15 @@
         { label: 'Głęb. stopnia', type: 'info', get: () => (first.a1 - first.a0).toFixed(1).replace('.', ',') + ' cm' },
       );
       spec.push(...texFields(o, 'tex', 'Tekstura'));
-      if (shape !== 'straight') spec.push({ label: 'Podest na', type: 'info', get: () => (lay.parts.find(q => q.landing).k * App.levelHeight(lv) / lay.N / 100).toFixed(2).replace('.', ',') + ' m' });
+      if (shape !== 'straight') {
+        // Spocznik na wysokości pełnego stopnia: wpisana wysokość zaokrąglana do najbliższego; puste – w połowie.
+        const rise = App.levelHeight(lv) / lay.N, landK = lay.parts.find(q => q.landing).k;
+        spec.push(
+          { key: 'n1', label: 'Wysokość spocznika', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: 'auto',
+            get: () => Math.round(landK * rise), set: editSet(v => { if (v) o.n1 = G.clamp(Math.round(v / rise) - 1, 1, lay.N - 2); else delete o.n1; }) },
+          { label: 'Stopni do spocznika', type: 'info', get: () => `${landK - 1} + spocznik + ${lay.N - landK}` },
+        );
+      }
       return form('Schody', spec, [h('button', { onclick: E.rotate }, 'Obróć 90° (T)'), h('button', { onclick: E.mirror }, 'Odbij (M)'), del]);
     }
     if (sel.kind === 'object' && o.kind === 'dormer') {

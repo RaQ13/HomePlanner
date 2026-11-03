@@ -497,7 +497,8 @@ window.App = window.App || {};
       N = Math.max(4, N);
       // Spocznik na całą szerokość, głębokość land (domyślnie równa szerokości biegu).
       const fw = Math.min(o.fw || o.w / 2, o.w / 2), land = G.clamp(o.land || fw, 20, o.l - 40);
-      const n1 = Math.floor((N - 1) / 2), n2 = N - 1 - n1, L = o.l - land, r1 = L / n1, r2 = L / n2;
+      // n1 – stopnie przed spocznikiem: ustawione (wysokość spocznika) albo połowa.
+      const n1 = o.n1 ? G.clamp(Math.round(o.n1), 1, N - 2) : Math.floor((N - 1) / 2), n2 = N - 1 - n1, L = o.l - land, r1 = L / n1, r2 = L / n2;
       for (let k = 0; k < n1; k++) parts.push({ a0: -hl + k * r1, a1: -hl + (k + 1) * r1, b0: -hw, b1: -hw + fw, k: k + 1 });
       parts.push({ a0: hl - land, a1: hl, b0: -hw, b1: hw, k: n1 + 1, landing: true });
       for (let k = 0; k < n2; k++) parts.push({ a0: hl - land - (k + 1) * r2, a1: hl - land - k * r2, b0: hw - fw, b1: hw, k: n1 + 2 + k });
@@ -511,7 +512,7 @@ window.App = window.App || {};
       const fw = Math.min(o.fw || o.w / 2, o.w - 20, o.l - 20);
       const land = G.clamp(o.land || fw, fw, o.l - 20), landW = G.clamp(o.landW || fw, fw, o.w - 20);
       const L1 = o.l - land, L2 = o.w - landW;
-      const n1 = G.clamp(Math.round((N - 1) * L1 / (L1 + L2)), 1, N - 2), n2 = N - 1 - n1, r1 = L1 / n1, r2 = L2 / n2;
+      const n1 = G.clamp(o.n1 ? Math.round(o.n1) : Math.round((N - 1) * L1 / (L1 + L2)), 1, N - 2), n2 = N - 1 - n1, r1 = L1 / n1, r2 = L2 / n2;
       for (let k = 0; k < n1; k++) parts.push({ a0: -hl + k * r1, a1: -hl + (k + 1) * r1, b0: -hw, b1: -hw + fw, k: k + 1 });
       parts.push({ a0: hl - land, a1: hl, b0: -hw, b1: -hw + landW, k: n1 + 1, landing: true });
       for (let k = 0; k < n2; k++) parts.push({ a0: hl - fw, a1: hl, b0: -hw + landW + k * r2, b1: -hw + landW + (k + 1) * r2, k: n1 + 2 + k });

@@ -69,7 +69,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 | Pokój | R | Prostokątny pokój ze ścianami |
 | Pokój dowolny | P | Pokój o dowolnym obrysie |
 | Drzwi / Okno | D / O | Otwór w ścianie; szerokość, wysokość, parapet i próg ustawiasz we Właściwościach |
-| Schody | S | Schody proste, L i U z obliczaniem stopni; pod biegiem wolne miejsce, opcja „Zabudowa pod schodami” |
+| Schody | S | Schody proste, L i U z obliczaniem stopni; wysokość spocznika do ustawienia, pod biegiem wolne miejsce, opcja „Zabudowa pod schodami” |
 | Komin | K | Komin przechodzący przez kondygnacje i dach |
 | Okno dachowe | L | Okno w połaci dachu |
 | Lukarna | U | Lukarna na dachu |
