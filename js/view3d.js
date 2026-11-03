@@ -362,12 +362,9 @@
       lv.rooms.forEach(r => {
         const fl = App.roomFloor(i, r), outline = floorOutline(r.pts, under, elev);
         const lift = (i === 0 ? 1 : 0.5) - fl.drop;
-        const objs = tagged(g, r.id, i, () => {
-          buildFloor(g, outline, fl.thick, lift, p.levels[i - 1], r.color);
-          if (fl.plinth) buildPlinth(g, outline, fl.plinth, lift - fl.thick);
-        });
+        const objs = tagged(g, r.id, i, () => buildFloor(g, outline, fl.thick, lift, p.levels[i - 1], r.color));
         if (only) return ghost(objs, 0.06);
-        if (r.texFloor) applyTexture(objs.filter(o => o.isMesh && !o.userData.plinth), r.texFloor, g);
+        if (r.texFloor) applyTexture(objs.filter(o => o.isMesh), r.texFloor, g);
         if (r.texCeil) {
           const c = tagged(g, r.id, i, () => buildCeiling(g, outline, App.levelHeight(lv) - 1));
           applyTexture(c.filter(o => o.isMesh), r.texCeil, g);
@@ -655,25 +652,6 @@
     const m = mesh(geo, mat(color || '#dddddd'), parent);
     m.userData.slab = true; // na spacerze krawędź stropu (otwór nad schodami) nie zatrzymuje
     m.position.y = lift;
-  }
-
-  // Bryła pod podłogą podniesionego parteru (do terenu) z wycięciem nad piwnicą; otwory zmniejszone o 1 cm,
-  // żeby nie stykały się z obrysem (triangulacja) – pasek chowa się w ścianach.
-  function buildPlinth(parent, pts, pl, top) {
-    if (pts.length < 3 || pl.depth < 1) return;
-    const shape = new THREE.Shape(pts.map(q => new THREE.Vector2(q.x, q.y)));
-    pl.holes.forEach(hp => {
-      const c = G.centroid(hp);
-      shape.holes.push(new THREE.Path(hp.map(q => {
-        const d = Math.hypot(q.x - c.x, q.y - c.y) || 1, k = Math.max(0, 1 - 1 / d);
-        return new THREE.Vector2(c.x + (q.x - c.x) * k, c.y + (q.y - c.y) * k);
-      })));
-    });
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: pl.depth, bevelEnabled: false });
-    geo.rotateX(Math.PI / 2);
-    const m = mesh(geo, mat('#b9b3a8'), parent);
-    m.userData.plinth = true;
-    m.position.y = top;
   }
 
   function buildStairs(parent, o, height) {

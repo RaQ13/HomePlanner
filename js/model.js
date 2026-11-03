@@ -122,7 +122,9 @@ window.App = window.App || {};
     // Pod ścianą (na osi albo po którejś stronie) jest piwnica – cokół nie schodzi do terenu, bo wszedłby w piwnicę.
     const covered = !!lower && (lower.rooms.some(r => [c, ...sides].some(p => G.inside(p, r.pts))) ||
       lower.walls.some(x => G.project(c, { x: x.x1, y: x.y1 }, { x: x.x2, y: x.y2 }).d < x.t / 2 + 1));
-    const toGround = i === (App.project.ground || 0) && elev - drop > 0 && !covered;
+    // Do terenu schodzą tylko ściany zewnętrzne (cokół elewacji); ściany wewnętrzne kończą się na stropie.
+    const outer = sides.some(p => !lv.rooms.some(r => G.inside(p, r.pts)));
+    const toGround = i === (App.project.ground || 0) && elev - drop > 0 && !covered && outer;
     return { base: -drop, foot: toGround ? -elev : -drop };
   };
   // Miejsca wzdłuż ściany, w których może się zmienić podłoga lub cokół (narożniki pokoi, końce ścian niżej).
@@ -133,27 +135,14 @@ window.App = window.App || {};
       .map(p => (p.x - w.x1) * f.ux + (p.y - w.y1) * f.uy).filter(t => t > 0.5 && t < f.L - 0.5);
   };
   // Podłoga pokoju: obniżenie i grubość płyty – na parterze bez piwnicy pod spodem płyta sięga do terenu.
-  // Podłoga pokoju: płyta (drop – obniżenie, thick – grubość). Na podniesionym parterze podłoga na gruncie
-  // to bryła do terenu (plinth), z wycięciem tam, gdzie pod pokojem jest piwnica – nie wchodzi w piwnicę.
+  // Podłoga pokoju: płyta (drop – obniżenie, thick – grubość). Na podniesionym parterze bez piwnicy podłoga na gruncie
+  // to bryła do terenu; gdy pod parterem jest piwnica – zwykła płyta stropu (bryła weszłaby w piwnicę).
   App.roomFloor = (i, r) => {
     const drop = App.roomDrop(r, i), elev = App.elevation(i), lower = App.project.levels[i - 1];
     const slab = i === 0 ? 10 : 22;
-    if (i !== (App.project.ground || 0) || elev - drop <= 10) return { drop, thick: slab };
-    const area = Math.abs(G.area(r.pts));
-    const under = (lower ? lower.rooms : []).map(x => clipPoly(x.pts, r.pts)).filter(q => q.length >= 3 && Math.abs(G.area(q)) > 100);
-    const covered = under.reduce((s, q) => s + Math.abs(G.area(q)), 0);
-    if (covered >= area * 0.98) return { drop, thick: slab };
-    // Obok piwnicy grunt pod podłogą sięga do poziomu podłogi piwnicy (widać go z piwnicy po usunięciu ściany).
-    const low = lower && App.elevation(i - 1) < 0 ? -App.elevation(i - 1) : 0;
-    if (!under.length && !low) return { drop, thick: elev - drop };
-    return { drop, thick: slab, plinth: { holes: under, depth: elev - drop - slab + low } };
+    if (i !== (App.project.ground || 0) || elev - drop <= 10 || (lower && App.elevation(i - 1) < 0)) return { drop, thick: slab };
+    return { drop, thick: elev - drop };
   };
-  // Część wspólna dwóch wielokątów, gdy choć jeden jest wypukły (pokoje zwykle są); inaczej – cały a albo nic.
-  function clipPoly(a, b) {
-    if (G.convex(b)) return G.clipConvex(a, b);
-    if (G.convex(a)) return G.clipConvex(b, a);
-    return G.inside(G.centroid(a), b) ? a : [];
-  }
   App.setLevel = (i) => {
     App.project.current = i;
     App.selection = null;
@@ -816,17 +805,6 @@ window.App = window.App || {};
     }
     if (a1 - a0 < 1 || b1 - b0 < 1) return null;
     return [G.local(r, a0, b0), G.local(r, a1, b0), G.local(r, a1, b1), G.local(r, a0, b1)];
-  };
-  G.convex = (pts) => {
-    let sgn = 0;
-    for (let k = 0; k < pts.length; k++) {
-      const a = pts[k], b = pts[(k + 1) % pts.length], c = pts[(k + 2) % pts.length];
-      const cr = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
-      if (Math.abs(cr) < 1e-6) continue;
-      if (sgn && Math.sign(cr) !== sgn) return false;
-      sgn = Math.sign(cr);
-    }
-    return true;
   };
   // Wielokąt przycięty do wnętrza wielokąta wypukłego (Sutherland–Hodgman).
   G.clipConvex = (poly, clip) => {
