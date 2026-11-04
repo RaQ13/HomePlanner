@@ -251,6 +251,15 @@
   }
   const solid = (m) => !m.material.transparent;
   // Sufit pokoju – płaszczyzna skierowana w dół (od góry niewidoczna, więc nie zasłania widoku z lotu ptaka).
+  // Wysokość sufitu w punkcie planu (względem podłogi kondygnacji i): spód płyty stropu nad nim, a gdy wyżej
+  // nie ma pokoju – wysokość kondygnacji.
+  function ceilingAt(i, pt) {
+    const p = App.project, H = App.levelHeight(p.levels[i]), up = p.levels[i + 1];
+    const r = up && up.rooms.find(x => x.pts.length >= 3 && G.inside(pt, x.pts));
+    if (!r) return H - 1;
+    const fl = App.roomFloor(i + 1, r);
+    return H + (i + 1 === 0 ? 1 : 0.5) - fl.drop - fl.thick;
+  }
   function buildCeiling(parent, pts, y) {
     if (pts.length < 3) return null;
     const shape = new THREE.Shape(pts.map(q => new THREE.Vector2(q.x, q.y)));
@@ -402,9 +411,22 @@
         // Tekstura podłogi tylko na wierzchu płyty – spód (sufit kondygnacji niżej) i krawędzie bez niej.
         if (r.texFloor) applyTexture(objs.filter(o => o.isMesh), r.texFloor, g, (n) => n.y > 0.5);
         if (r.texCeil) {
-          const c = tagged(g, r.id, i, () => buildCeiling(g, outline, App.levelHeight(lv) - 1));
+          const c = tagged(g, r.id, i, () => buildCeiling(g, outline, ceilingAt(i, G.centroid(r.pts)) - 0.2));
           applyTexture(c.filter(o => o.isMesh), r.texCeil, g);
         }
+      });
+      // Fragmenty podłogi (warstwa / podest na podłodze) i sufitu (pod stropem, ewentualnie obniżone).
+      if (!only) lv.areas.forEach(o => {
+        if (o.pts.length < 3) return;
+        // Sufit nad pokojem nie zasłania widoku z góry, gdy kondygnacja wyżej jest ukryta.
+        if (o.surf === 'ceil' && i === last && i < n - 1) return;
+        const c = G.centroid(o.pts), thick = Math.max(0.5, o.thick || 1), lift = Math.max(0, o.lift || 0);
+        let top, depth;
+        if (o.surf === 'ceil') { const cy = ceilingAt(i, c); top = cy - 0.1; depth = lift + thick; }
+        else { const room = lv.rooms.find(r => G.inside(c, r.pts)), fl = (i === 0 ? 1 : 0.5) - (room ? App.roomDrop(room, i) : 0); top = fl + lift + thick; depth = lift + thick - 0.1; }
+        const objs = tagged(g, o.id, i, () => buildSlab(g, o.pts, top, depth, o.color));
+        objs.forEach(m => { if (m.isMesh) m.castShadow = o.surf !== 'ceil'; });
+        if (o.tex) applyTexture(objs.filter(m => m.isMesh), o.tex, g, o.surf === 'ceil' ? (n) => n.y < -0.5 : (n) => n.y > 0.5);
       });
       if (!only) lv.objects.forEach(o => {
         if (o.kind === 'stairs') {
@@ -1456,7 +1478,7 @@
   }
   // Powierzchnia, na którą można wejść większym krokiem (do CLIMB): podłoga pokoju, ściana pod progiem, teren,
   // nawierzchnia – ale nie mebel, schody czy komin.
-  const CLIMBABLE = new Set(['room', 'wall', 'opening', 'path', 'plot']);
+  const CLIMBABLE = new Set(['room', 'wall', 'opening', 'path', 'plot', 'area']);
   function climbable(h) {
     if (h.object === terrain || h.object.userData.slab) return true;
     const pk = pickOf(h.object), lv = pk && App.project.levels[pk.level];

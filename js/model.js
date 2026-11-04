@@ -24,6 +24,7 @@ window.App = window.App || {};
     plot: { color: '#9fc46f' },
     path: { kind: 'chodnik', mode: 'strip', width: 120 },
     fence: { style: 'panel', h: 150, base: 20, span: 250, color: '#3a3d42' },
+    area: { surf: 'floor' },
     install: { type: 'socket' },
     roof: { type: 'gable', pitch: 35, overhang: 50, raise: 0, color: '#8f3b2c' },
   };
@@ -41,11 +42,11 @@ window.App = window.App || {};
   // attic – poddasze: dachy tej kondygnacji opierają się na jej podłodze (+ ścianka kolankowa), ściany ścina połać.
   App.newLevel = (name, height) => ({
     id: App.uid(), name, height, attic: false, walls: [], rooms: [], openings: [], objects: [], roofs: [], installs: [],
-    plots: [], paths: [], fences: [],
+    plots: [], paths: [], fences: [], areas: [],
   });
   // plots – działki, paths – nawierzchnie (chodnik, podjazd, taras…), fences – ogrodzenia; leżą na terenie,
   // zapisywane na kondygnacji na poziomie terenu (parter).
-  const LISTS = ['walls', 'rooms', 'openings', 'objects', 'roofs', 'installs', 'plots', 'paths', 'fences'];
+  const LISTS = ['walls', 'rooms', 'openings', 'objects', 'roofs', 'installs', 'plots', 'paths', 'fences', 'areas'];
   App.LISTS = LISTS;
 
   App.newProject = () => ({
@@ -170,7 +171,7 @@ window.App = window.App || {};
     lv.roofs = lv.roofs.filter(o => o.id !== id);
     lv.openings = lv.openings.filter(o => o.id !== id && lv.walls.some(w => w.id === o.wallId));
     lv.installs = lv.installs.filter(o => o.id !== id && (!o.wallId || lv.walls.some(w => w.id === o.wallId)));
-    ['plots', 'paths', 'fences'].forEach(k => { lv[k] = lv[k].filter(o => o.id !== id); });
+    ['plots', 'paths', 'fences', 'areas'].forEach(k => { lv[k] = lv[k].filter(o => o.id !== id); });
   };
 
   // ---------- Historia (cofnij / ponów) i zapis ----------
@@ -329,6 +330,10 @@ window.App = window.App || {};
     return { L, ux, uy, nx: -uy, ny: ux };
   };
   App.wallHeight = (lv, w) => w.h || lv.height;
+  // Fragment podłogi lub sufitu – osobny element w obrysie pts: { id, kind: 'area', surf: 'floor' | 'ceil', name, pts,
+  // color, tex, lift (podłoga – wysokość nad podłogą, np. podest; sufit – obniżenie), thick (grubość warstwy) }.
+  App.makeArea = (pts, surf) => ({ id: App.uid(), kind: 'area', surf, name: surf === 'ceil' ? 'Fragment sufitu' : 'Fragment podłogi',
+    pts, color: surf === 'ceil' ? '#f4f2ec' : '#d9c7a8', lift: 0, thick: surf === 'ceil' ? 2 : 1 });
   // Wysokość schodów (na którą wchodzą): ustawiona albo do podłogi kondygnacji wyżej.
   App.stairHeight = (o, lv) => o.h || App.levelHeight(lv);
   // Wysokość kondygnacji w budynku (od podłogi do podłogi wyżej): nie mniejsza niż jej najwyższa ściana –

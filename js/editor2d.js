@@ -37,6 +37,7 @@
     chimney: 'Kliknij, aby postawić komin. T – obrót o 90°.',
     install: 'Wybierz element instalacji po prawej. Gniazdka, łączniki i podejścia – kliknij przy licu ściany (strona kursora wyznacza lico). Przewody i rury – klikaj kolejne punkty (przyciągają do osi ścian i punktów instalacji), Enter lub prawy klik – zakończ.',
     furniture: 'Wybierz mebel z katalogu po prawej i kliknij na rzucie. Przy ścianie mebel sam obraca się do niej tyłem (Shift – bez przyciągania). T – obrót o 90°, M – odbicie.',
+    area: 'Klikaj narożniki fragmentu podłogi lub sufitu (rodzaj wybierz po lewej). Kliknij pierwszy punkt lub Enter, aby zamknąć. Wpisz długość boku w cm i Enter. Backspace – cofnij punkt.',
     plot: 'Klikaj narożniki działki. Kliknij pierwszy punkt lub Enter, aby zamknąć. Wpisz długość boku w cm i Enter. Backspace – cofnij punkt.',
     path: 'Pas: klikaj kolejne punkty osi chodnika (szerokość po prawej), Enter lub prawy klik – zakończ. Obszar: klikaj narożniki, zamknij pierwszym punktem lub Enterem.',
     fence: 'Klikaj kolejne punkty ogrodzenia. Kliknięcie pierwszego punktu zamyka ogrodzenie dookoła, Enter lub prawy klik – kończy. Bramę i furtkę wstaw narzędziem Ogród w przerwie płotu.',
@@ -86,7 +87,7 @@
       l.rooms.forEach(r => pts.push(...r.pts));
       l.objects.forEach(o => pts.push(...G.rectCorners(o)));
       l.roofs.forEach(o => pts.push(...G.rectCorners(o)));
-      [...(l.plots || []), ...(l.paths || []), ...(l.fences || [])].forEach(o => pts.push(...o.pts));
+      [...(l.plots || []), ...(l.paths || []), ...(l.fences || []), ...(l.areas || [])].forEach(o => pts.push(...o.pts));
     });
     if (!W || !H) return;
     if (!pts.length) { E.scale = 0.6; E.ox = 80; E.oy = 80; E.render(); return; }
@@ -110,7 +111,7 @@
 
   // Narzędzia terenu działają na kondygnacji na poziomie terenu (parter).
   const SITE_TOOLS = ['plot', 'path', 'fence', 'garden'];
-  const POLY_TOOLS = ['poly', 'plot', 'path', 'fence'];
+  const POLY_TOOLS = ['poly', 'plot', 'path', 'fence', 'area'];
   E.setTool = (id) => {
     E.cancel();
     const p = App.project;
@@ -158,7 +159,7 @@
     };
     lv.walls.forEach(w => { if (ex && ex.has(w)) return; cand(w.x1, w.y1); cand(w.x2, w.y2); });
     lv.rooms.forEach(r => r.pts.forEach(q => { if (!(ex && ex.has(q))) cand(q.x, q.y); }));
-    [...lv.plots, ...lv.paths, ...lv.fences].forEach(o => o.pts.forEach(q => { if (!(ex && ex.has(q))) cand(q.x, q.y); }));
+    [...lv.plots, ...lv.paths, ...lv.fences, ...lv.areas].forEach(o => o.pts.forEach(q => { if (!(ex && ex.has(q))) cand(q.x, q.y); }));
     const below = App.project.levels[App.project.current - 1];
     if (below) below.walls.forEach(w => { cand(w.x1, w.y1); cand(w.x2, w.y2); });
     (opt.extra || []).forEach(q => cand(q.x, q.y));
@@ -192,7 +193,7 @@
     if (from) align(from, 1.6);
     lv.walls.forEach(w => { if (ex && ex.has(w)) return; align({ x: w.x1, y: w.y1 }); align({ x: w.x2, y: w.y2 }); });
     lv.rooms.forEach(r => r.pts.forEach(q => { if (!(ex && ex.has(q))) align(q); }));
-    [...lv.plots, ...lv.paths, ...lv.fences].forEach(o => o.pts.forEach(q => { if (!(ex && ex.has(q))) align(q); }));
+    [...lv.plots, ...lv.paths, ...lv.fences, ...lv.areas].forEach(o => o.pts.forEach(q => { if (!(ex && ex.has(q))) align(q); }));
     (opt.extra || []).forEach(q => align(q));
     if (gx) x = gx.x;
     if (gy) y = gy.y;
@@ -300,7 +301,7 @@
       for (let k = 0; k < 4; k++) if (G.dist(p, c[k]) < tol) return { type: 'roofCorner', obj: sel.obj, corner: k, select: sel.obj.id };
     }
     // Wierzchołki zaznaczonej działki, nawierzchni lub ogrodzenia.
-    if (sel && (sel.kind === 'plot' || sel.kind === 'path' || sel.kind === 'fence')) {
+    if (sel && (sel.kind === 'plot' || sel.kind === 'path' || sel.kind === 'fence' || sel.kind === 'area')) {
       for (let k = 0; k < sel.obj.pts.length; k++) if (G.dist(p, sel.obj.pts[k]) < tol) return { type: 'polyVertex', obj: sel.obj, k, select: sel.obj.id };
     }
     if (sel && sel.kind === 'install' && sel.obj.pts) {
@@ -350,6 +351,9 @@
       const pr = G.project(p, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 });
       if (pr.d < w.t / 2 + tol * 0.5) return { type: 'wall', obj: w, select: w.id };
     }
+    // Fragmenty podłogi / sufitu – przed pokojem, w którym leżą (najmniejszy pod kursorem).
+    const area = lv.areas.filter(o => G.inside(p, o.pts)).sort((x, y) => Math.abs(G.area(x.pts)) - Math.abs(G.area(y.pts)))[0];
+    if (area) return { type: 'polyMove', obj: area, select: area.id };
     let best = null, ba = Infinity;
     for (const r of lv.rooms) {
       if (!G.inside(p, r.pts)) continue;
@@ -669,11 +673,12 @@
       else if (area) obj = App.makePath(pts, d.kind);
     }
     if (t === 'fence' && pts.length >= 2) obj = App.makeFence(pts, closed && pts.length >= 3);
+    if (t === 'area' && area) obj = App.makeArea(pts, App.defaults.area.surf);
     if (!obj) return;
     App.edit(() => lv[obj.kind + 's'].push(obj));
     App.select(obj.id);
   }
-  tools.plot = tools.path = tools.fence = tools.poly;
+  tools.plot = tools.path = tools.fence = tools.area = tools.poly;
   tools.garden = { down() { tools.furniture.down(); } };
 
   function openingTarget(kind) {
@@ -904,11 +909,11 @@
     else if (sel.kind === 'object') items.objects.push(o);
     else if (sel.kind === 'roof') items.roofs.push(o);
     else if (sel.kind === 'install') items.installs = [o];
-    else if (sel.kind === 'plot' || sel.kind === 'path' || sel.kind === 'fence') items[sel.kind + 's'] = [o];
+    else if (sel.kind === 'plot' || sel.kind === 'path' || sel.kind === 'fence' || sel.kind === 'area') items[sel.kind + 's'] = [o];
     if (sel.kind === 'wall') items.openings = lv.openings.filter(op => op.wallId === o.id);
     // Punkt odniesienia – środek obrysu; przy wklejaniu trafia pod kursor.
     const pts = [...items.walls.flatMap(w => [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }]), ...items.rooms.flatMap(r => r.pts), ...items.objects, ...items.roofs,
-      ...['plots', 'paths', 'fences'].flatMap(k => (items[k] || []).flatMap(o => o.pts))];
+      ...['plots', 'paths', 'fences', 'areas'].flatMap(k => (items[k] || []).flatMap(o => o.pts))];
     let ref = null;
     if (pts.length) {
       const xs = pts.map(q => q.x), ys = pts.map(q => q.y);
@@ -970,10 +975,10 @@
       it.rooms.forEach(r => { fresh(r); r.pts.forEach(q => { q.x += dx; q.y += dy; }); lv.rooms.push(r); });
       it.objects.forEach(o => { fresh(o); o.x += dx; o.y += dy; lv.objects.push(o); });
       it.roofs.forEach(r => { fresh(r); r.x += dx; r.y += dy; lv.roofs.push(r); });
-      ['plots', 'paths', 'fences'].forEach(k => (it[k] || []).forEach(o => { fresh(o); o.pts.forEach(q => { q.x += dx; q.y += dy; }); lv[k].push(o); }));
+      ['plots', 'paths', 'fences', 'areas'].forEach(k => (it[k] || []).forEach(o => { fresh(o); o.pts.forEach(q => { q.x += dx; q.y += dy; }); lv[k].push(o); }));
     });
     cb.pastes++;
-    const main = it.rooms[0] || it.walls[0] || it.objects[0] || it.roofs[0] || ['plots', 'paths', 'fences'].map(k => (it[k] || [])[0]).find(Boolean);
+    const main = it.rooms[0] || it.walls[0] || it.objects[0] || it.roofs[0] || ['plots', 'paths', 'fences', 'areas'].map(k => (it[k] || [])[0]).find(Boolean);
     if (main) App.select(main.id);
     return true;
   };
@@ -1067,6 +1072,7 @@
       ctx.fillStyle = tech || only ? '#ffffff' : texPattern(r.texFloor) || r.color || '#eee';
       ctx.fill();
     });
+    if (!only) drawAreas(lv, tech);
     // Tylko instalacje: ściany i otwory przygaszone, żeby przewody i rury były na pierwszym planie.
     if (only) ctx.globalAlpha = 0.3;
     lv.walls.forEach(w => {
@@ -1601,6 +1607,34 @@
       ctx.fillText(`instalacja ${l}`, 14, 46);
     }
     world();
+  }
+
+  // ---------- Fragmenty podłogi i sufitu ----------
+  // Podłoga – wypełnienie kolorem / teksturą; sufit – tylko kreskowany obrys z ukośnym szrafem (widok z góry).
+  function drawAreas(lv, tech) {
+    lv.areas.forEach(o => {
+      path(o.pts);
+      if (o.surf !== 'ceil') {
+        ctx.fillStyle = tech ? '#ffffff' : texPattern(o.tex) || o.color || '#d9c7a8';
+        ctx.fill();
+      } else if (!tech) {
+        ctx.save();
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(100,116,139,0.35)';
+        ctx.lineWidth = px(1);
+        const xs = o.pts.map(q => q.x), ys = o.pts.map(q => q.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), st = px(10);
+        ctx.beginPath();
+        for (let x = x0 - (y1 - y0); x < x1; x += st) { ctx.moveTo(x, y0); ctx.lineTo(x + (y1 - y0), y1); }
+        ctx.stroke();
+        ctx.restore();
+        path(o.pts);
+      }
+      ctx.strokeStyle = tech ? '#555' : o.surf === 'ceil' ? '#64748b' : App.shade(o.color || '#d9c7a8', 0.6);
+      ctx.lineWidth = px(1);
+      ctx.setLineDash(o.surf === 'ceil' ? [px(6), px(3)] : [px(3), px(2)]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
   }
 
   // ---------- Teren ----------

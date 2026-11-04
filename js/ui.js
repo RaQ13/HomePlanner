@@ -32,6 +32,7 @@
     { id: 'install', name: 'Instalacje', key: 'I', icon: svg('<path d="M13 3l-6 10h5l-1 8 6-10h-5z"/>') },
     { id: 'furniture', name: 'Meble', key: 'E', icon: svg('<path d="M4 11V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"/><path d="M3 11h18v5H3zM5 16v3M19 16v3"/>') },
     { id: 'roof', name: 'Dach', key: 'A', icon: svg('<path d="M2 13l10-8 10 8"/><path d="M5 11v8h14v-8"/>') },
+    { id: 'area', name: 'Fragment podł./sufitu', key: 'B', icon: svg('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M9 10h8v6H9z" fill="currentColor" fill-opacity=".3" stroke-dasharray="2 1.5"/>') },
     { id: 'plot', name: 'Działka', key: 'G', icon: svg('<path d="M3 7l8-4 10 5-3 12-14-2z" stroke-dasharray="4 2"/>') },
     { id: 'path', name: 'Nawierzchnia', key: 'N', icon: svg('<path d="M6 21l4-18M18 21l-4-18"/><path d="M12 5v2M12 11v2M12 17v2"/>') },
     { id: 'fence', name: 'Płot', key: 'Z', icon: svg('<path d="M5 21V7l2-3 2 3v14M15 21V7l2-3 2 3v14M3 10h18M3 16h18"/>') },
@@ -436,6 +437,19 @@
         { label: 'Narożniki', type: 'info', get: () => String(o.pts.length) },
       ], [del]);
     }
+    if (sel.kind === 'area') {
+      const ceil = o.surf === 'ceil';
+      return form(ceil ? 'Fragment sufitu' : 'Fragment podłogi', [
+        { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name || '', set: editSet(v => { o.name = v; }) },
+        { key: 'surf', label: 'Rodzaj', type: 'select', options: [['floor', 'podłoga'], ['ceil', 'sufit']], get: () => o.surf || 'floor', set: editSet(v => { o.surf = v; }) },
+        { key: 'color', label: 'Kolor', type: 'color', get: () => o.color, set: editSet(v => { o.color = v; }) },
+        ...texFields(o, 'tex', 'Tekstura'),
+        { key: 'lift', label: ceil ? 'Obniżenie sufitu' : 'Wysokość nad podłogą (podest)', unit: 'cm', min: 0, max: 300, step: 0.5, get: () => o.lift || 0, set: editSet(v => { o.lift = v; }) },
+        { key: 'thick', label: 'Grubość warstwy', unit: 'cm', min: 0.5, max: 100, step: 0.5, get: () => o.thick || 1, set: editSet(v => { o.thick = v; }) },
+        { label: 'Powierzchnia', type: 'info', get: () => App.fmtArea(o.pts) },
+        { label: 'Narożniki', type: 'info', get: () => String(o.pts.length) },
+      ], del);
+    }
     if (sel.kind === 'path') {
       return form('Nawierzchnia', [
         { key: 'type', label: 'Rodzaj', type: 'select', options: App.PATH_KINDS.map(k => [k.id, k.name]), get: () => o.type,
@@ -723,6 +737,10 @@
     ]);
     if (t === 'furniture') return furnitureCatalog(false);
     if (t === 'garden') return furnitureCatalog(true);
+    if (t === 'area') return form('Nowy fragment', [
+      { key: 'ds', label: 'Rodzaj', type: 'select', options: [['floor', 'fragment podłogi'], ['ceil', 'fragment sufitu']], get: () => d.area.surf, set: defSet(d.area, 'surf') },
+      { label: 'Wskazówka', type: 'info', get: () => 'Klikaj narożniki; osobny kolor, tekstura i wysokość' },
+    ]);
     if (t === 'plot') return form('Nowa działka', [
       { key: 'dc', label: 'Kolor terenu', type: 'color', get: () => d.plot.color, set: defSet(d.plot, 'color') },
       { label: 'Wskazówka', type: 'info', get: () => 'Klikaj narożniki granicy działki' },
