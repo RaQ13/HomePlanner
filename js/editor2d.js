@@ -1582,7 +1582,7 @@
     // Schody: liczba i wymiar stopni.
     lv.objects.filter(o => o.kind === 'stairs').forEach(o => {
       const lay = App.stairLayout(o), q = lay.parts[0];
-      label(o.x, o.y, `${lay.N} × ${fmtCm(App.levelHeight(lv) / lay.N)}/${fmtCm(q.a1 - q.a0)}`, { font: '9.5px system-ui, sans-serif', color: '#111', bg: 'rgba(255,255,255,0.85)' });
+      label(o.x, o.y, `${lay.N} × ${fmtCm(App.stairHeight(o, lv) / lay.N)}/${fmtCm(q.a1 - q.a0)}`, { font: '9.5px system-ui, sans-serif', color: '#111', bg: 'rgba(255,255,255,0.85)' });
     });
   }
   function drawTitle(lv) {

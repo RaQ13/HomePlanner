@@ -414,7 +414,7 @@
           sg.position.y = -drop;
           g.add(sg);
           sg.userData.pick = { id: o.id, level: i };
-          buildStairs(sg, o, App.levelHeight(lv) + drop);
+          buildStairs(sg, o, o.h ? o.h : App.levelHeight(lv) + drop, App.levelHeight(lv) + drop);
           if (o.tex) applyTexture(meshesOf([sg], m => solid(m) && !m.userData.rail), o.tex, sg);
           if (o.texRail) applyTexture(meshesOf([sg], m => !!m.userData.rail), o.texRail, sg);
           return;
@@ -755,7 +755,7 @@
     m.userData.levelUp = true; // wierzch wypełnienia to podłoga kondygnacji wyżej
   }
 
-  function buildStairs(parent, o, height) {
+  function buildStairs(parent, o, height, floorH = height) {
     const lay = App.stairLayout(o), rise = height / lay.N;
     const g = new THREE.Group();
     g.position.set(o.x, 0, o.y);
@@ -773,7 +773,7 @@
     // Pod każdym biegiem skośna płyta (spód równoległy do schodów) – sufit np. nad zejściem do piwnicy pod biegiem.
     if (!o.solid) stairFlights(lay).forEach(f => buildFlightSlab(g, f, rise, T, m2));
     // Sufit skośny: nad biegiem, równolegle do schodów, prześwit o.soffitH nad krawędziami stopni – aż do stropu wyżej.
-    if (o.soffit) stairFlights(lay).forEach(f => buildSoffit(g, f, rise, height, (o.soffitH || 210)));
+    if (o.soffit) stairFlights(lay).forEach(f => buildSoffit(g, f, rise, floorH, (o.soffitH || 210)));
     // Poręcze: pręt na słupkach albo pełna ścianka (balustrada murowana), H nad krawędzią stopni, odsunięte do środka biegu.
     const H = o.railH || 90, wall = o.railType === 'wall';
     const rail = mat(wall ? App.project.settings.wallColor : '#3f3f46', wall ? {} : { metalness: 0.5, roughness: 0.4 });

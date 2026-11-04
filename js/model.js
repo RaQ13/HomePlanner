@@ -329,6 +329,8 @@ window.App = window.App || {};
     return { L, ux, uy, nx: -uy, ny: ux };
   };
   App.wallHeight = (lv, w) => w.h || lv.height;
+  // Wysokość schodów (na którą wchodzą): ustawiona albo do podłogi kondygnacji wyżej.
+  App.stairHeight = (o, lv) => o.h || App.levelHeight(lv);
   // Wysokość kondygnacji w budynku (od podłogi do podłogi wyżej): nie mniejsza niż jej najwyższa ściana –
   // ściany podniesione pojedynczo podnoszą strop i wyższe kondygnacje, sufit nie przecina pokoju.
   App.levelHeight = (lv) => lv.walls.reduce((m, w) => Math.max(m, w.h || 0), lv.height);

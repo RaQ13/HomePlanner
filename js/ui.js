@@ -210,8 +210,10 @@
         let v = f.type === 'checkbox' ? input.checked : input.value;
         if (!f.type || f.type === 'number') {
           v = parseFloat(String(v).replace(',', '.'));
+          const empty = isNaN(v) && f.allowEmpty;
           if (isNaN(v)) v = f.allowEmpty ? 0 : f.get();
-          if (f.min != null) v = Math.max(f.min, v);
+          // Puste pole (allowEmpty) – wartość automatyczna, bez dociągania do minimum.
+          if (f.min != null && !empty) v = Math.max(f.min, v);
           if (f.max != null) v = Math.min(f.max, v);
         }
         f.set(v);
@@ -365,6 +367,7 @@
       }
       spec.push(
         { key: 'l', label: shape === 'straight' ? 'Długość biegu' : 'Długość całkowita', unit: 'cm', min: 50, max: 1000, get: () => o.l, set: editSet(v => { o.l = v; }) },
+        { key: 'h', label: 'Wysokość schodów', unit: 'cm', min: 20, max: 1000, allowEmpty: true, placeholder: 'do stropu', get: () => o.h || '', set: editSet(v => { if (v) o.h = v; else delete o.h; }) },
         { key: 'steps', label: 'Liczba stopni', min: shape === 'straight' ? 2 : 4, max: 40, get: () => lay.N, set: editSet(v => { o.steps = Math.round(v); }) },
       );
       if (shape === 'U') {
@@ -392,13 +395,13 @@
       if (shape !== 'straight') spec.push({ key: 'flip', label: 'Skręt w drugą stronę', type: 'checkbox', get: () => !!o.flip, set: editSet(v => { o.flip = v; }) });
       spec.push(
         { key: 'rot', label: 'Obrót', unit: '°', min: -360, max: 360, step: 15, get: () => o.rot, set: editSet(v => { o.rot = v; }) },
-        { label: 'Wys. stopnia', type: 'info', get: () => (App.levelHeight(lv) / lay.N).toFixed(1).replace('.', ',') + ' cm' },
+        { label: 'Wys. stopnia', type: 'info', get: () => (App.stairHeight(o, lv) / lay.N).toFixed(1).replace('.', ',') + ' cm' },
         { label: 'Głęb. stopnia', type: 'info', get: () => (first.a1 - first.a0).toFixed(1).replace('.', ',') + ' cm' },
       );
       spec.push(...texFields(o, 'tex', 'Tekstura'));
       if (shape !== 'straight') {
         // Spocznik na wysokości pełnego stopnia: wpisana wysokość zaokrąglana do najbliższego; puste – w połowie.
-        const rise = App.levelHeight(lv) / lay.N, landK = lay.parts.find(q => q.landing).k;
+        const rise = App.stairHeight(o, lv) / lay.N, landK = lay.parts.find(q => q.landing).k;
         spec.push(
           { key: 'n1', label: 'Wysokość spocznika', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: 'auto',
             get: () => Math.round(landK * rise), set: editSet(v => { if (v) o.n1 = G.clamp(Math.round(v / rise) - 1, 1, lay.N - 2); else delete o.n1; }) },
