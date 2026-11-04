@@ -729,6 +729,32 @@
     m.matrix.makeBasis(new THREE.Vector3(da, 0, db), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-db, 0, da));
   }
 
+  // Sufit skośny nad biegiem: płyta równoległa do linii krawędzi stopni (prześwit clear) na całej długości biegu;
+  // poniżej poziomu podłogi wyżej przestrzeń nad płytą jest wypełniona stropem (z góry nie ma tam otworu).
+  function buildSoffit(g, f, rise, height, clear) {
+    const { steps, da, db } = f;
+    const corners = (q) => [[q.a0, q.b0], [q.a1, q.b0], [q.a1, q.b1], [q.a0, q.b1]];
+    const S = (p) => da * p[0] + db * p[1], C = (p) => -db * p[0] + da * p[1];
+    const front = steps.map(q => Math.min(...corners(q).map(S))), n = steps.length;
+    const s1 = Math.max(...corners(steps[n - 1]).map(S)), s0 = front[0];
+    const cs = steps.flatMap(q => corners(q).map(C)), c0 = Math.min(...cs), c1 = Math.max(...cs);
+    const slope = (steps[n - 1].k - steps[0].k) * rise / ((front[n - 1] - front[0]) || 1);
+    if (slope <= 0) return;
+    const yAt = (sv) => steps[0].k * rise + (sv - front[0]) * slope + clear;
+    const floorTop = height + 0.3, P = 10;
+    // Dół: linia sufitu; góra: wierzch płyty (P nad sufitem), ale nie niżej niż wierzch stropu wyżej.
+    const pts = [[s0, yAt(s0)], [s1, yAt(s1)], [s1, Math.max(yAt(s1) + P, floorTop)]];
+    const sx = s0 + (floorTop - P - yAt(s0)) / slope;
+    if (sx > s0 && sx < s1) pts.push([sx, floorTop]);
+    pts.push([s0, Math.max(floorTop, yAt(s0) + P)]);
+    const geo = new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y))), { depth: c1 - c0, bevelEnabled: false });
+    geo.translate(0, 0, c0);
+    const m = mesh(geo, mat('#ecebe6'), g);
+    m.matrixAutoUpdate = false;
+    m.matrix.makeBasis(new THREE.Vector3(da, 0, db), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-db, 0, da));
+    m.userData.levelUp = true; // wierzch wypełnienia to podłoga kondygnacji wyżej
+  }
+
   function buildStairs(parent, o, height) {
     const lay = App.stairLayout(o), rise = height / lay.N;
     const g = new THREE.Group();
@@ -746,6 +772,8 @@
     });
     // Pod każdym biegiem skośna płyta (spód równoległy do schodów) – sufit np. nad zejściem do piwnicy pod biegiem.
     if (!o.solid) stairFlights(lay).forEach(f => buildFlightSlab(g, f, rise, T, m2));
+    // Sufit skośny: nad biegiem, równolegle do schodów, prześwit o.soffitH nad krawędziami stopni – aż do stropu wyżej.
+    if (o.soffit) stairFlights(lay).forEach(f => buildSoffit(g, f, rise, height, (o.soffitH || 210)));
     // Poręcze: pręt na słupkach albo pełna ścianka (balustrada murowana), H nad krawędzią stopni, odsunięte do środka biegu.
     const H = o.railH || 90, wall = o.railType === 'wall';
     const rail = mat(wall ? App.project.settings.wallColor : '#3f3f46', wall ? {} : { metalness: 0.5, roughness: 0.4 });
@@ -1397,7 +1425,7 @@
   function standOn(h) {
     if (h.object === terrain) { W.level = App.project.ground || 0; return; }
     const pk = pickOf(h.object);
-    if (pk && pk.level != null) W.level = pk.level;
+    if (pk && pk.level != null) W.level = Math.min(App.project.levels.length - 1, pk.level + (h.object.userData.levelUp ? 1 : 0));
   }
   // Czy ruch o d (metry) w kierunku dir koliduje z czymś na wysokości kolan, bioder, piersi lub głowy.
   // Kolana i biodra liczone od wyższej z podłóg (tu / przed sobą), głowa – od niższej: przy uskoku między

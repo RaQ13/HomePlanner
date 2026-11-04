@@ -375,6 +375,8 @@
         spec.push({ key: 'landW', label: 'Szerokość podestu (wzdłuż 2. biegu)', unit: 'cm', min: 50, max: 500, get: () => Math.round(o.landW || o.fw), set: editSet(v => { o.landW = Math.max(v, o.fw); o.w = Math.max(o.w, o.landW + 60); }) });
       }
       spec.push({ key: 'solid', label: 'Zabudowa pod schodami', type: 'checkbox', get: () => !!o.solid, set: editSet(v => { o.solid = v; }) });
+      spec.push({ key: 'soffit', label: 'Sufit skośny nad schodami', type: 'checkbox', get: () => !!o.soffit, set: editSet(v => { o.soffit = v; }) });
+      if (o.soffit) spec.push({ key: 'soffitH', label: 'Prześwit nad stopniami', unit: 'cm', min: 180, max: 400, get: () => o.soffitH || 210, set: editSet(v => { o.soffitH = v; }) });
       // Poręcz: strona (proste – jedna / druga; L i U – od oka schodów / od zewnątrz), rodzaj, wysokość, tekstura.
       const sides = shape === 'straight'
         ? [['in', 'z jednej strony'], ['out', 'z drugiej strony'], ['both', 'z obu stron'], ['none', 'brak']]
