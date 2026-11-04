@@ -693,6 +693,42 @@
     groupFaces(m, new THREE.Matrix4(), (n) => n.y > 0.5, mat('#ecebe6'), m.material);
   }
 
+  // Biegi schodów: kolejne stopnie między spocznikami, z kierunkiem (da, db) w układzie schodów.
+  function stairFlights(lay) {
+    const flights = [];
+    let cur = [];
+    lay.parts.forEach(q => { if (q.landing) { if (cur.length) flights.push(cur); cur = []; } else cur.push(q); });
+    if (cur.length) flights.push(cur);
+    return flights.filter(f => f.length >= 2).map(steps => {
+      const c = (q) => [(q.a0 + q.a1) / 2, (q.b0 + q.b1) / 2], p0 = c(steps[0]), p1 = c(steps[steps.length - 1]);
+      const L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1;
+      return { steps, da: (p1[0] - p0[0]) / L, db: (p1[1] - p0[1]) / L };
+    });
+  }
+  // Skośna płyta pod biegiem: od spodu klocków stopni do linii równoległej do biegu, grubość T (prostopadle).
+  function buildFlightSlab(g, f, rise, T, material) {
+    const { steps, da, db } = f;
+    const corners = (q) => [[q.a0, q.b0], [q.a1, q.b0], [q.a1, q.b1], [q.a0, q.b1]];
+    const S = (p) => da * p[0] + db * p[1], C = (p) => -db * p[0] + da * p[1];
+    const rng = steps.map(q => { const ss = corners(q).map(S); return [Math.min(...ss), Math.max(...ss)]; });
+    const cs = steps.flatMap(q => corners(q).map(C)), c0 = Math.min(...cs), c1 = Math.max(...cs);
+    const n = steps.length, bottom = (j) => (steps[j].k - 1) * rise;
+    // Linia przez tylne dolne narożniki klocków pierwszego i ostatniego stopnia, obniżona o grubość płyty.
+    const slope = (bottom(n - 1) - bottom(0)) / ((rng[n - 1][1] - rng[0][1]) || 1);
+    const drop = T * Math.sqrt(1 + slope * slope);
+    const under = (sv) => Math.max(0, bottom(0) + (sv - rng[0][1]) * slope - drop);
+    const pts = [];
+    steps.forEach((q, j) => { pts.push([rng[j][0], bottom(j)], [rng[j][1], bottom(j)]); });
+    pts.push([rng[n - 1][1], under(rng[n - 1][1])], [rng[0][0], under(rng[0][0])]);
+    const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: c1 - c0, bevelEnabled: false });
+    geo.translate(0, 0, c0);
+    const m = mesh(geo, material, g);
+    m.matrixAutoUpdate = false;
+    // Układ: x – wzdłuż biegu, y – w górę, z – w poprzek (prawoskrętny).
+    m.matrix.makeBasis(new THREE.Vector3(da, 0, db), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-db, 0, da));
+  }
+
   function buildStairs(parent, o, height) {
     const lay = App.stairLayout(o), rise = height / lay.N;
     const g = new THREE.Group();
@@ -704,9 +740,12 @@
     // „Zabudowa pod schodami” – bryła pełna do podłogi.
     const T = 18;
     lay.parts.forEach(q => {
-      const top = rise * q.k, bottom = o.solid ? 0 : Math.max(0, q.landing ? top - T - 4 : top - rise - T);
+      // Stopień – klocek wysokości stopnia; spocznik – płyta; zabudowa – bryła do podłogi.
+      const top = rise * q.k, bottom = o.solid ? 0 : Math.max(0, q.landing ? top - T - 4 : top - rise);
       box(g, q.landing ? m3 : q.k % 2 ? m1 : m2, q.a0, q.a1, bottom, top, q.b1 - q.b0, (q.b0 + q.b1) / 2);
     });
+    // Pod każdym biegiem skośna płyta (spód równoległy do schodów) – sufit np. nad zejściem do piwnicy pod biegiem.
+    if (!o.solid) stairFlights(lay).forEach(f => buildFlightSlab(g, f, rise, T, m2));
     // Poręcze: pręt na słupkach albo pełna ścianka (balustrada murowana), H nad krawędzią stopni, odsunięte do środka biegu.
     const H = o.railH || 90, wall = o.railType === 'wall';
     const rail = mat(wall ? App.project.settings.wallColor : '#3f3f46', wall ? {} : { metalness: 0.5, roughness: 0.4 });
