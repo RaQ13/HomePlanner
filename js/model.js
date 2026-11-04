@@ -163,6 +163,21 @@ window.App = window.App || {};
     return null;
   };
 
+  // Ukryte elementy (o.hidden) – „pseudousunięte”: zostają w projekcie, ale model 3D i rysunek liczą się bez nich.
+  // Okna, drzwi i punkty instalacji na ukrytej ścianie znikają razem z nią.
+  App.visibleLevel = (lv) => {
+    if (!LISTS.some(k => lv[k].some(o => o.hidden))) return lv;
+    const v = Object.assign({}, lv);
+    LISTS.forEach(k => { v[k] = lv[k].filter(o => !o.hidden); });
+    const walls = new Set(v.walls.map(w => w.id));
+    v.openings = v.openings.filter(o => walls.has(o.wallId));
+    v.installs = v.installs.filter(o => !o.wallId || walls.has(o.wallId));
+    return v;
+  };
+  App.visibleProject = (p) => (p.levels.some(l => LISTS.some(k => l[k].some(o => o.hidden))) ? Object.assign({}, p, { levels: p.levels.map(App.visibleLevel) }) : p);
+  App.hiddenCount = () => App.project.levels.reduce((s, l) => s + LISTS.reduce((t, k) => t + l[k].filter(o => o.hidden).length, 0), 0);
+  App.setHidden = (id, v) => App.edit(() => { const f = App.find(id); if (f) { if (v) f.obj.hidden = true; else delete f.obj.hidden; } });
+  App.showAll = () => App.edit(() => App.project.levels.forEach(l => LISTS.forEach(k => l[k].forEach(o => { delete o.hidden; }))));
   App.removeById = (id) => {
     const lv = App.level();
     lv.walls = lv.walls.filter(w => w.id !== id);

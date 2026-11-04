@@ -330,7 +330,14 @@
   }
 
   // ---------- Budowa sceny ----------
+  // Model 3D z widocznych elementów: na czas budowy projekt podmieniony na wersję bez ukrytych (pomocnicze funkcje
+  // modelu – podłogi, cokoły, szczyty – też ich nie widzą).
   function rebuild() {
+    const real = App.project;
+    App.project = App.visibleProject(real);
+    try { rebuildScene(); } finally { App.project = real; }
+  }
+  function rebuildScene() {
     clear();
     const p = App.project, s = p.settings;
     // Na spacerze widać wszystkie kondygnacje – można przejść schodami piętro wyżej.

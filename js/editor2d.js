@@ -1042,9 +1042,17 @@
   }
   const fmtM = cm => (cm / 100).toFixed(2).replace('.', ',') + ' m';
 
+  // Rysunek z widocznych elementów (projekt podmieniony na czas rysowania); ukryte – szary obrys do odkrycia.
+  let realProject = null;
   function draw() {
     pending = false;
     if (!W || !App.project) return;
+    realProject = App.project;
+    App.project = App.visibleProject(realProject);
+    try { drawPlan(); } finally { App.project = realProject; }
+  }
+  const findReal = (id) => App.find(id, realProject.levels[realProject.current]);
+  function drawPlan() {
     const p = App.project, lv = App.level(), s = p.settings;
     const tech = E.tech, only = E.instOnly;
     screen();
@@ -1117,12 +1125,40 @@
     if (E.instOn() && E.instDims) drawInstallDims(lv);
     if (tech) { drawTitle(lv); if (E.instOn()) drawInstallLegend(lv); }
 
-    if (E.hover && E.tool === 'select' && !E.drag && E.hover.select !== App.selection) drawOutline(E.hover.obj || App.find(E.hover.select).obj, 'rgba(37,99,235,0.45)', 2);
-    const sel = App.find(App.selection);
+    if (!tech) drawHidden(realProject.levels[realProject.current]);
+    if (E.hover && E.tool === 'select' && !E.drag && E.hover.select !== App.selection) {
+      const ho = E.hover.obj || (findReal(E.hover.select) || {}).obj;
+      if (ho) drawOutline(ho, 'rgba(37,99,235,0.45)', 2);
+    }
+    const sel = findReal(App.selection);
     if (sel) drawOutline(sel.obj, SEL, 2.5, true);
     drawToolPreview();
     drawWalker();
     drawScaleBar();
+  }
+
+  // Ukryte elementy: szary przerywany obrys (da się je kliknąć i pokazać z powrotem).
+  function drawHidden(lv) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(100,116,139,0.75)';
+    ctx.fillStyle = 'rgba(148,163,184,0.12)';
+    ctx.lineWidth = px(1.2);
+    ctx.setLineDash([px(5), px(4)]);
+    App.LISTS.forEach(k => lv[k].forEach(o => {
+      if (!o.hidden) return;
+      let pts = null, closed = true;
+      if (k === 'walls') pts = App.wallPolygon(lv, o);
+      else if (o.pts) { pts = o.pts; closed = k !== 'fences' && !(k === 'installs') || !!o.closed; }
+      else if (k === 'openings') {
+        const w = lv.walls.find(x => x.id === o.wallId);
+        if (w) { const f = App.wallFrame(w), c = App.openingPos(w, o); pts = [-1, 1].map(sd => ({ x: w.x1 + f.ux * (c + sd * o.width / 2), y: w.y1 + f.uy * (c + sd * o.width / 2) })); closed = false; }
+      } else if (o.l && o.w) pts = G.rectCorners(o);
+      if (!pts || pts.length < 2) return;
+      path(pts, closed);
+      if (closed && pts.length > 2) ctx.fill();
+      ctx.stroke();
+    }));
+    ctx.restore();
   }
 
   // Ludzik ze spaceru w 3D: pozycja i pole widzenia.

@@ -258,6 +258,7 @@
     const del = [
       h('button', { title: 'Kopiuj (Ctrl+C)', onclick: () => E.copy() }, 'Kopiuj'),
       E.clipboard ? h('button', { title: 'Wklej (Ctrl+V) – pod kursorem na rzucie albo obok oryginału', onclick: () => E.paste() }, 'Wklej') : null,
+      h('button', { title: o.hidden ? 'Pokaż element w modelu (H)' : 'Ukryj element – zostaje w projekcie, ale znika z modelu 3D (H)', onclick: toggleHidden }, o.hidden ? 'Pokaż' : 'Ukryj'),
       h('button', { className: 'danger', onclick: deleteSelection }, 'Usuń'),
     ].filter(Boolean);
     if (sel.kind === 'wall') {
@@ -786,6 +787,8 @@
       `${lv.name}: ścian ${lv.walls.length}, pokoi ${lv.rooms.length}, drzwi ${lv.openings.filter(o => o.kind === 'door').length}, okien ${lv.openings.filter(o => o.kind === 'window').length}.`));
     const ground = p.levels[p.ground || 0];
     ground.plots.forEach(o => wrap.append(h('div', { className: 'row' }, h('label', {}, o.name || 'Działka'), h('span', { className: 'info' }, App.fmtArea(o.pts)))));
+    const hidden = App.hiddenCount();
+    if (hidden) wrap.append(h('div', { className: 'row' }, h('label', {}, `Ukryte elementy: ${hidden}`), h('button', { title: 'Pokaż wszystkie ukryte elementy na wszystkich kondygnacjach', onclick: App.showAll }, 'Pokaż wszystkie')));
     wrap.append(h('p', { className: 'muted' }, 'Zaznacz element na rzucie, aby edytować jego wymiary.'));
     return wrap;
   }
@@ -796,6 +799,7 @@
     box.innerHTML = '';
     const sel = App.find(App.selection);
     box.append((sel && selectionForm(sel)) || toolForm() || summary());
+    if (sel && sel.obj.hidden) box.firstChild && box.firstChild.insertBefore(h('p', { className: 'muted' }, 'Element ukryty – nie ma go w modelu 3D ani na rysunku. „Pokaż” albo H przywraca.'), box.firstChild.children[1] || null);
     if (focused) {
       const el = box.querySelector(`[data-key="${CSS.escape(focused)}"]`);
       if (el) el.focus();
@@ -920,6 +924,10 @@
   }
 
   // ---------- Usuwanie ----------
+  function toggleHidden() {
+    const f = App.find(App.selection);
+    if (f) App.setHidden(f.obj.id, !f.obj.hidden);
+  }
   function deleteSelection() {
     if (!App.selection) return;
     const id = App.selection;
@@ -998,6 +1006,7 @@
     if (k === 'Enter') { E.finish(); return; }
     if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
     if (k === 't' || k === 'T') { E.rotate(); return; }
+    if ((k === 'h' || k === 'H') && App.selection) { toggleHidden(); return; }
     if (k === 'm' || k === 'M') { E.mirror(); return; }
     if (k === 'f' || k === 'F') { E.fit(); return; }
     if (k === '+' || k === '=') { E.zoom(1.2); return; }

@@ -92,6 +92,13 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 
 Podczas rysowania długość odcinka można wpisać z klawiatury i zatwierdzić Enterem.
 
+## Ukrywanie elementów
+
+Zaznaczony element można **ukryć** przyciskiem „Ukryj” albo klawiszem **H**. To takie pseudousunięcie: element zostaje w projekcie, ale znika z modelu 3D i z obliczeń.
+- Ukryta ściana nie zatrzymuje ludzika na spacerze, a jej okna i drzwi znikają razem z nią.
+- Na rzucie ukryty element zostaje jako szary, przerywany obrys. Kliknij go i wybierz „Pokaż” albo naciśnij H.
+- W podsumowaniu widać liczbę ukrytych elementów i przycisk „Pokaż wszystkie”.
+
 ## Kondygnacje
 
 Panel **Kondygnacje** po lewej służy do:
