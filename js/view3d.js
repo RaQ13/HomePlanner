@@ -423,18 +423,23 @@
         // Sufit nad pokojem nie zasłania widoku z góry, gdy kondygnacja wyżej jest ukryta.
         if (o.surf === 'ceil' && i === last && i < n - 1) return;
         const c = G.centroid(o.pts), thick = Math.max(0.5, o.thick || 1), lift = Math.max(0, o.lift || 0);
-        let top, depth;
+        let top, depth, pit = null;
         if (o.surf === 'ceil') { const cy = ceilingAt(i, c); top = cy - 0.1; depth = lift + thick; }
         else {
           const room = lv.rooms.find(r => G.inside(c, r.pts)), fl = (i === 0 ? 1 : 0.5) - (room ? App.roomDrop(room, i) : 0);
-          // Obniżenie najwyżej do spodu płyty podłogi pokoju; obniżony fragment wypełnia płytę pod sobą.
-          const slab = room ? App.roomFloor(i, room).thick : 22, drop = room ? G.clamp(o.drop || 0, 0, slab - 1) : 0;
-          if (drop > 0) { top = fl - drop; depth = Math.max(thick, slab - drop); }
+          // Wnęka: dno – płyta grubości stropu pokoju na głębokości drop (od spodu obniża sufit niżej),
+          // ścianki boczne od podłogi pokoju do dna.
+          const slab = room ? App.roomFloor(i, room).thick : 22, drop = room ? Math.max(0, o.drop || 0) : 0;
+          if (drop > 0) { top = fl - drop; depth = Math.min(slab, 22); pit = { top: fl, h: drop }; }
           else { top = fl + lift + thick; depth = lift + thick - 0.1; }
         }
-        const objs = tagged(g, o.id, i, () => buildSlab(g, o.pts, top, depth, o.color));
+        const objs = tagged(g, o.id, i, () => {
+          // Dno wnęki jak płyta stropu: otwór nad schodami z kondygnacji niżej, spód w kolorze sufitu.
+          if (pit) { buildFloor(g, o.pts, depth, top, p.levels[i - 1], o.color); buildPit(g, o.pts, pit.top, pit.h + depth); }
+          else buildSlab(g, o.pts, top, depth, o.color);
+        });
         objs.forEach(m => { if (m.isMesh) m.castShadow = o.surf !== 'ceil'; });
-        if (o.tex) applyTexture(objs.filter(m => m.isMesh), o.tex, g, o.surf === 'ceil' ? (n) => n.y < -0.5 : (n) => n.y > 0.5);
+        if (o.tex) applyTexture(objs.filter(m => m.isMesh && !m.userData.pitWall), o.tex, g, o.surf === 'ceil' ? (n) => n.y < -0.5 : (n) => n.y > 0.5);
       });
       if (!only) lv.objects.forEach(o => {
         if (o.kind === 'stairs') {
@@ -705,14 +710,33 @@
     return pts;
   }
 
+  const convex = (pts) => {
+    let sg = 0;
+    for (let k = 0; k < pts.length; k++) {
+      const a = pts[k], b = pts[(k + 1) % pts.length], c = pts[(k + 2) % pts.length];
+      const cr = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+      if (Math.abs(cr) < 1e-6) continue;
+      if (sg && Math.sign(cr) !== sg) return false;
+      sg = Math.sign(cr);
+    }
+    return true;
+  };
   function buildFloor(parent, pts, thick, lift, below, color, pits = []) {
+    pits = pits.slice();
     if (pts.length < 3 || Math.abs(G.area(pts)) < 100) return;
     const shape = new THREE.Shape();
     pts.forEach((q, i) => (i ? shape.lineTo(q.x, q.y) : shape.moveTo(q.x, q.y)));
     shape.closePath();
     // Otwory w stropie nad schodami z niższej kondygnacji.
     if (below) {
-      below.objects.filter(o => o.kind === 'stairs' && G.rectCorners(o).every(q => G.inside(q, pts))).forEach(o => shape.holes.push(rectPath(o, THREE.Path)));
+      below.objects.filter(o => o.kind === 'stairs').forEach(o => {
+        const rc = G.rectCorners(o);
+        if (rc.every(q => G.inside(q, pts))) return shape.holes.push(rectPath(o, THREE.Path));
+        // Schody tylko częściowo pod płytą (np. pod obniżonym fragmentem) – otwór w części wspólnej.
+        if (!convex(pts)) return;
+        const cut = G.clipConvex(rc, pts);
+        if (cut.length >= 3 && Math.abs(G.area(cut)) > 100) pits.push(cut);
+      });
     }
     // Otwory pod obniżone fragmenty podłogi, minimalnie zmniejszone (mogą dochodzić do ścian pokoju).
     pits.forEach(hp => {
@@ -934,6 +958,21 @@
     const m = mesh(geo, mat(color || '#cccccc', { roughness: 0.95 }), parent);
     m.position.y = top;
     m.castShadow = false;
+  }
+  // Ścianki wnęki w podłodze: pionowe prostokąty wzdłuż boków wielokąta pts, od top w dół na h (bez denka i wieka),
+  // widoczne z obu stron.
+  function buildPit(parent, pts, top, h) {
+    if (pts.length < 3 || h < 0.5) return;
+    const pos = [], y0 = top - 0.05, y1 = top - h;
+    pts.forEach((a, k) => {
+      const b = pts[(k + 1) % pts.length];
+      pos.push(a.x, y0, a.y, b.x, y0, b.y, b.x, y1, b.y, a.x, y0, a.y, b.x, y1, b.y, a.x, y1, a.y);
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.computeVertexNormals();
+    const m = mesh(geo, mat('#e4e1da', { side: THREE.DoubleSide }), parent);
+    m.userData.pitWall = true;
   }
   // Wiele prostopadłościanów [x0, x1, y0, y1, z0, z1] w jednej geometrii (pręty paneli, sztachety, deski).
   function boxesGeometry(list) {
