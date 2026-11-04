@@ -69,7 +69,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 | Pokój | R | Prostokątny pokój ze ścianami |
 | Pokój dowolny | P | Pokój o dowolnym obrysie |
 | Drzwi / Okno | D / O | Otwór w ścianie; szerokość, wysokość, parapet i próg ustawiasz we Właściwościach |
-| Fragment podł./sufitu | B | Osobny kawałek podłogi albo sufitu (wielokąt): własny kolor, tekstura, podest nad podłogą albo obniżony sufit; zaznaczany w 2D i 3D |
+| Fragment podł./sufitu | B | Osobny kawałek podłogi albo sufitu (wielokąt): własny kolor, tekstura, podest nad podłogą, podłoga niżej (wnęka) albo obniżony sufit; zaznaczany w 2D i 3D |
 | Schody | S | Schody proste, L i U z obliczaniem stopni; wysokość schodów (puste – do stropu); wysokość spocznika, poręcz (strona, pręt albo ścianka, wysokość, tekstura), skośny spód biegu, „Sufit skośny nad schodami” (prześwit nad stopniami), „Zabudowa pod schodami” |
 | Komin | K | Komin przechodzący przez kondygnacje i dach |
 | Okno dachowe | L | Okno w połaci dachu |

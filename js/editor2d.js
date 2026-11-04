@@ -1629,6 +1629,11 @@
         ctx.restore();
         path(o.pts);
       }
+      if (o.surf !== 'ceil' && (o.drop || o.lift)) {
+        const c = G.centroid(o.pts);
+        label(c.x, c.y, o.drop ? `−${fmtCm(o.drop)} cm` : `+${fmtCm(o.lift)} cm`, { font: '10px system-ui, sans-serif', color: '#374151', bg: 'rgba(255,255,255,0.8)' });
+        path(o.pts);
+      }
       ctx.strokeStyle = tech ? '#555' : o.surf === 'ceil' ? '#64748b' : App.shade(o.color || '#d9c7a8', 0.6);
       ctx.lineWidth = px(1);
       ctx.setLineDash(o.surf === 'ceil' ? [px(6), px(3)] : [px(3), px(2)]);

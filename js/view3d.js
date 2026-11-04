@@ -406,7 +406,9 @@
       lv.rooms.forEach(r => {
         const fl = App.roomFloor(i, r), outline = floorOutline(r.pts, under, elev);
         const lift = (i === 0 ? 1 : 0.5) - fl.drop;
-        const objs = tagged(g, r.id, i, () => buildFloor(g, outline, fl.thick, lift, p.levels[i - 1], r.color));
+        // Fragmenty podłogi obniżone (wnęka, np. brodzik) – otwór w płycie podłogi pokoju.
+        const pits = lv.areas.filter(a => a.surf !== 'ceil' && a.drop > 0 && a.pts.length >= 3 && G.inside(G.centroid(a.pts), r.pts)).map(a => a.pts);
+        const objs = tagged(g, r.id, i, () => buildFloor(g, outline, fl.thick, lift, p.levels[i - 1], r.color, pits));
         if (only) return ghost(objs, 0.06);
         // Tekstura podłogi tylko na wierzchu płyty – spód (sufit kondygnacji niżej) i krawędzie bez niej.
         if (r.texFloor) applyTexture(objs.filter(o => o.isMesh), r.texFloor, g, (n) => n.y > 0.5);
@@ -423,7 +425,13 @@
         const c = G.centroid(o.pts), thick = Math.max(0.5, o.thick || 1), lift = Math.max(0, o.lift || 0);
         let top, depth;
         if (o.surf === 'ceil') { const cy = ceilingAt(i, c); top = cy - 0.1; depth = lift + thick; }
-        else { const room = lv.rooms.find(r => G.inside(c, r.pts)), fl = (i === 0 ? 1 : 0.5) - (room ? App.roomDrop(room, i) : 0); top = fl + lift + thick; depth = lift + thick - 0.1; }
+        else {
+          const room = lv.rooms.find(r => G.inside(c, r.pts)), fl = (i === 0 ? 1 : 0.5) - (room ? App.roomDrop(room, i) : 0);
+          // Obniżenie najwyżej do spodu płyty podłogi pokoju; obniżony fragment wypełnia płytę pod sobą.
+          const slab = room ? App.roomFloor(i, room).thick : 22, drop = room ? G.clamp(o.drop || 0, 0, slab - 1) : 0;
+          if (drop > 0) { top = fl - drop; depth = Math.max(thick, slab - drop); }
+          else { top = fl + lift + thick; depth = lift + thick - 0.1; }
+        }
         const objs = tagged(g, o.id, i, () => buildSlab(g, o.pts, top, depth, o.color));
         objs.forEach(m => { if (m.isMesh) m.castShadow = o.surf !== 'ceil'; });
         if (o.tex) applyTexture(objs.filter(m => m.isMesh), o.tex, g, o.surf === 'ceil' ? (n) => n.y < -0.5 : (n) => n.y > 0.5);
@@ -697,7 +705,7 @@
     return pts;
   }
 
-  function buildFloor(parent, pts, thick, lift, below, color) {
+  function buildFloor(parent, pts, thick, lift, below, color, pits = []) {
     if (pts.length < 3 || Math.abs(G.area(pts)) < 100) return;
     const shape = new THREE.Shape();
     pts.forEach((q, i) => (i ? shape.lineTo(q.x, q.y) : shape.moveTo(q.x, q.y)));
@@ -706,6 +714,11 @@
     if (below) {
       below.objects.filter(o => o.kind === 'stairs' && G.rectCorners(o).every(q => G.inside(q, pts))).forEach(o => shape.holes.push(rectPath(o, THREE.Path)));
     }
+    // Otwory pod obniżone fragmenty podłogi, minimalnie zmniejszone (mogą dochodzić do ścian pokoju).
+    pits.forEach(hp => {
+      const c = G.centroid(hp);
+      shape.holes.push(new THREE.Path(hp.map(q => { const d = Math.hypot(q.x - c.x, q.y - c.y) || 1, k = Math.max(0, 1 - 0.3 / d); return new THREE.Vector2(c.x + (q.x - c.x) * k, c.y + (q.y - c.y) * k); })));
+    });
     const geo = new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false });
     geo.rotateX(Math.PI / 2);
     const m = mesh(geo, mat(color || '#dddddd'), parent);
