@@ -920,7 +920,7 @@ window.App = window.App || {};
     g.objects.push({ id: App.uid(), kind: 'stairs', x: 935, y: 600, l: 360, w: 100, steps: 16, rot: -90 });
     g.objects.push({ id: App.uid(), kind: 'chimney', x: 515, y: 45, l: 50, w: 50, above: 100, rot: 0 });
     // Dobudowany garaż z osobnym, niższym dachem obróconym o 90°.
-    mk(g, 1000, 300, 1360, 300, 24);
+    const gt = mk(g, 1000, 300, 1360, 300, 24);
     const gr = mk(g, 1360, 300, 1360, 800, 24);
     const gb = mk(g, 1360, 800, 1000, 800, 24);
     room(g, 'Garaż', '#e5e7eb', 1000, 300, 1360, 800);
@@ -944,6 +944,94 @@ window.App = window.App || {};
     op(u, b.left, 'window', 150, 80, 80, 130);
     op(u, b.bottom, 'window', 225, 100, 120, 100);
     u.roofs.push(App.roofOverWalls(u, u.walls, { type: 'gable', pitch: 35, overhang: 50 }));
+    sampleInstalls(g, a, { gt, gr, gb }, u, b);
     return p;
   };
+
+  // Przykładowa instalacja elektryczna i wod-kan domu przykładowego. Punkt na ścianie: pos – cm od początku ściany,
+  // side +1 – lico po stronie normalnej (-uy, ux): w obrysie domu to wnętrze; z – nad podłogą (domyślna dla typu).
+  function sampleInstalls(g, a, gw, u, b) {
+    const wp = (lv, w, type, pos, side, z) => lv.installs.push({ id: App.uid(), kind: 'install', type, wallId: w.id, pos, side, z: z == null ? App.installDefaultZ(type, lv) : z });
+    const fp = (lv, type, x, y) => lv.installs.push({ id: App.uid(), kind: 'install', type, x, y, z: App.installDefaultZ(type, lv) });
+    const run = (lv, type, pts, z) => lv.installs.push({ id: App.uid(), kind: 'install', type, pts: pts.map(([x, y]) => ({ x, y })), z: z == null ? App.installDefaultZ(type, lv) : z });
+
+    // ---- Parter: elektryka ----
+    wp(g, a.right, 'board', 395, 1);                       // rozdzielnica w holu
+    // Salon
+    fp(g, 'light', 275, 160); fp(g, 'light', 275, 360);
+    wp(g, a.mid, 'switch2', 360, 1);                        // przy drzwiach z holu
+    wp(g, a.top, 'socket2', 265, 1);
+    wp(g, a.left, 'socket', 380, 1);
+    wp(g, a.hl, 'socket2', 120, -1); wp(g, a.hl, 'socket', 420, -1);
+    wp(g, a.mid, 'socket2', 150, 1);                        // RTV
+    wp(g, a.mid, 'lightw', 250, 1);
+    // Kuchnia
+    fp(g, 'light', 775, 175);
+    wp(g, a.hr, 'switch', 160, -1);
+    wp(g, a.top, 'socket2', 600, 1, 110); wp(g, a.top, 'socket2', 900, 1, 110);   // nad blatem
+    wp(g, a.right, 'socket', 290, 1, 110);
+    wp(g, a.hr, 'power', 380, -1);                          // płyta indukcyjna
+    wp(g, a.hr, 'socket', 300, -1);                         // lodówka
+    // Hol
+    fp(g, 'light', 720, 470); fp(g, 'light', 720, 690);
+    wp(g, a.bottom, 'switch', 140, 1);                      // przy wejściu
+    wp(g, a.mid, 'switch', 520, -1);
+    wp(g, a.mid, 'socket', 580, -1);
+    // Pokój
+    fp(g, 'light', 275, 650);
+    wp(g, a.mid, 'switch', 720, 1);
+    wp(g, a.bottom, 'socket2', 900, 1); wp(g, a.bottom, 'socket', 560, 1);
+    wp(g, a.hl, 'socket', 300, 1);
+    // Garaż
+    fp(g, 'light', 1180, 450); fp(g, 'light', 1180, 650);
+    wp(g, gw.gb, 'switch', 40, 1);
+    wp(g, gw.gr, 'socket2', 340, 1, 110); wp(g, gw.gr, 'power', 420, 1, 110);
+    // Przewody pod stropem w osiach ścian, od rozdzielnicy
+    run(g, 'cable', [[1000, 395], [1000, 350], [550, 350]]);                 // kuchnia, hol
+    run(g, 'cable', [[550, 350], [550, 0], [0, 0], [0, 250]]);               // salon
+    run(g, 'cable', [[550, 350], [550, 500], [0, 500], [0, 800], [550, 800]]); // pokój
+    run(g, 'cable', [[1000, 395], [1000, 300], [1360, 300], [1360, 720]]);   // garaż
+    run(g, 'cable', [[1000, 395], [1000, 800], [860, 800]]);                 // wejście
+
+    // ---- Parter: woda i kanalizacja (zlew kuchenny pod oknem) ----
+    fp(g, 'riser', 570, 24);
+    wp(g, a.top, 'cold', 745, 1); wp(g, a.top, 'hot', 775, 1); wp(g, a.top, 'drain', 805, 1);
+    run(g, 'pdrain', [[570, 0], [805, 0]]);
+    run(g, 'pcold', [[570, 0], [745, 0]]); run(g, 'phot', [[570, 0], [775, 0]]);
+    wp(g, a.top, 'cold', 640, 1, 15);                       // zmywarka
+    wp(g, gw.gt, 'cold', 60, 1, 60);                        // kran w garażu
+
+    // ---- Piętro: elektryka ----
+    // Sypialnia
+    fp(u, 'light', 275, 250);
+    wp(u, b.mid, 'switch', 360, 1);
+    wp(u, b.hl, 'socket2', 150, -1, 60); wp(u, b.hl, 'socket2', 400, -1, 60);     // przy łóżku
+    wp(u, b.hl, 'lightw', 150, -1); wp(u, b.hl, 'lightw', 400, -1);
+    wp(u, b.mid, 'socket', 100, 1); wp(u, b.left, 'socket', 420, 1);
+    // Pokój dziecka
+    fp(u, 'light', 775, 175);
+    wp(u, b.hr, 'switch', 160, -1);
+    wp(u, b.right, 'socket2', 250, 1); wp(u, b.top, 'socket', 620, 1); wp(u, b.hr, 'socket', 330, -1);
+    // Korytarz
+    fp(u, 'light', 720, 470); fp(u, 'light', 720, 690);
+    wp(u, b.mid, 'switch2', 520, -1);
+    wp(u, b.right, 'socket', 450, 1);
+    // Łazienka
+    fp(u, 'light', 275, 650);
+    wp(u, b.mid, 'switch2', 590, -1);                       // na korytarzu przy drzwiach
+    wp(u, b.hl, 'lightw', 300, 1); wp(u, b.hl, 'socket', 380, 1, 120);
+    wp(u, b.bottom, 'junction', 700, 1);
+    run(u, 'cable', [[550, 350], [550, 0], [0, 0], [0, 500], [550, 500]]);
+    run(u, 'cable', [[550, 350], [1000, 350], [1000, 0], [550, 0]]);
+    run(u, 'cable', [[550, 350], [550, 800], [0, 800], [0, 500]]);
+
+    // ---- Piętro: łazienka – umywalka, WC, prysznic, pion kanalizacyjny w narożniku ----
+    fp(u, 'riser', 532, 518);
+    wp(u, b.hl, 'cold', 285, 1, 55); wp(u, b.hl, 'hot', 315, 1, 55); wp(u, b.hl, 'drain', 300, 1, 50);   // umywalka
+    wp(u, b.hl, 'cold', 140, 1, 15); wp(u, b.hl, 'drain', 120, 1, 0);                                   // WC
+    wp(u, b.mid, 'cold', 725, 1, 110); wp(u, b.mid, 'hot', 755, 1, 110); wp(u, b.mid, 'drain', 740, 1, 5); // prysznic
+    run(u, 'pdrain', [[550, 500], [120, 500]], 10); run(u, 'pdrain', [[550, 500], [550, 740]], 5);
+    run(u, 'pcold', [[550, 500], [120, 500]], 22); run(u, 'phot', [[550, 500], [315, 500]], 28);
+    run(u, 'pcold', [[550, 500], [550, 725]], 22); run(u, 'phot', [[550, 500], [550, 755]], 28);
+  }
 })(window.App);
