@@ -111,6 +111,7 @@ Panel **Kondygnacje** po lewej służy do:
 Pozostałe funkcje:
 - **Poddasze**: ściany są przycinane połacią dachu.
 - Podłogę pokoju można obniżyć, np. do garażu na poziomie terenu.
+- Pokój oznaczony jako garaż (domyślnie każdy z „garaż” w nazwie) jest w podsumowaniu liczony osobno: kondygnacje i „Razem bez garażu” go nie zawierają, a „Razem z garażem” – tak.
 - Na rzucie widać jako podkład ściany kondygnacji poniżej.
 - Kondygnacja nie jest niższa niż jej najwyższa ściana. Gdy podniesiesz pojedyncze ściany ponad wysokość kondygnacji, strop i kondygnacje powyżej przesuwają się w górę, a na liście kondygnacji widać nową wysokość.
 

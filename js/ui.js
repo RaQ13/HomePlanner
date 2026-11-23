@@ -276,6 +276,7 @@
         { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name, set: editSet(v => { o.name = v; }) },
         { key: 'color', label: 'Kolor podłogi', type: 'color', get: () => o.color, set: editSet(v => { o.color = v; }) },
         { key: 'atGround', label: 'Podłoga na poziomie terenu (np. garaż)', type: 'checkbox', get: () => !!o.atGround, set: editSet(v => { o.atGround = v; }) },
+        { key: 'garage', label: 'Garaż (w podsumowaniu osobno)', type: 'checkbox', get: () => App.isGarage(o), set: editSet(v => { o.garage = v; }) },
         o.atGround ? null : { key: 'drop', label: 'Podłoga niżej o', unit: 'cm', min: 0, max: 600, get: () => o.drop || 0, set: editSet(v => { o.drop = v; }) },
         { label: 'Rzędna podłogi', type: 'info', get: () => ((App.elevation(App.project.current) - App.roomDrop(o, App.project.current)) / 100).toFixed(2).replace('.', ',') + ' m' },
         { label: 'Pow. netto', type: 'info', get: () => App.roomNetArea(lv, o).toFixed(2).replace('.', ',') + ' m²' },
@@ -775,13 +776,18 @@
     const p = App.project;
     const wrap = h('div', { className: 'form' }, h('h3', {}, 'Podsumowanie'));
     if (E.clipboard) wrap.append(h('div', { className: 'actions' }, h('button', { title: 'Wklej skopiowany element (Ctrl+V)', onclick: () => E.paste() }, 'Wklej (Ctrl+V)')));
-    let total = 0;
+    const m2 = (v) => v.toFixed(2).replace('.', ',') + ' m²';
+    const row = (label, v, cls) => wrap.append(h('div', { className: 'row' + (cls ? ' ' + cls : '') }, h('label', {}, label), h('span', { className: 'info' }, m2(v))));
+    let total = 0, garage = 0;
     p.levels.forEach(lv => {
-      const a = lv.rooms.reduce((s, r) => s + App.roomNetArea(lv, r), 0);
+      let a = 0;
+      lv.rooms.forEach(r => { const s = App.roomNetArea(lv, r); if (App.isGarage(r)) garage += s; else a += s; });
       total += a;
-      wrap.append(h('div', { className: 'row' }, h('label', {}, lv.name), h('span', { className: 'info' }, a.toFixed(2).replace('.', ',') + ' m²')));
+      row(lv.name, a);
     });
-    wrap.append(h('div', { className: 'row total' }, h('label', {}, 'Razem (netto)'), h('span', { className: 'info' }, total.toFixed(2).replace('.', ',') + ' m²')));
+    if (garage) row('Garaż', garage);
+    row(garage ? 'Razem bez garażu' : 'Razem (netto)', total, 'total');
+    if (garage) row('Razem z garażem', total + garage);
     const lv = App.level();
     wrap.append(h('p', { className: 'muted' },
       `${lv.name}: ścian ${lv.walls.length}, pokoi ${lv.rooms.length}, drzwi ${lv.openings.filter(o => o.kind === 'door').length}, okien ${lv.openings.filter(o => o.kind === 'window').length}.`));

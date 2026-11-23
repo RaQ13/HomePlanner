@@ -503,6 +503,8 @@ window.App = window.App || {};
     });
   };
   App.roomNetArea = (lv, room) => Math.abs(G.area(App.roomNetPolygon(lv, room))) / 10000;
+  // Garaż liczony osobno w podsumowaniu: flaga room.garage, a gdy nieustawiona – po nazwie.
+  App.isGarage = (room) => room.garage != null ? !!room.garage : /gara[zż]/i.test(room.name || '');
 
   // ---------- Schody ----------
   App.STAIR_SHAPES = [['straight', 'proste'], ['U', 'dwubiegowe U (zawracające)'], ['L', 'zabiegowe L (z podestem)']];
