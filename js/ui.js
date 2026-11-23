@@ -280,6 +280,7 @@
         o.atGround ? null : { key: 'drop', label: 'Podłoga niżej o', unit: 'cm', min: 0, max: 600, get: () => o.drop || 0, set: editSet(v => { o.drop = v; }) },
         { label: 'Rzędna podłogi', type: 'info', get: () => ((App.elevation(App.project.current) - App.roomDrop(o, App.project.current)) / 100).toFixed(2).replace('.', ',') + ' m' },
         { label: 'Pow. netto', type: 'info', get: () => App.roomNetArea(lv, o).toFixed(2).replace('.', ',') + ' m²' },
+        { label: 'Pow. użytkowa', type: 'info', get: () => App.roomUsableArea(App.project.current, o).toFixed(2).replace('.', ',') + ' m²' },
         { label: 'Pow. w osiach', type: 'info', get: () => (Math.abs(G.area(o.pts)) / 10000).toFixed(2).replace('.', ',') + ' m²' },
         { label: 'Obwód', type: 'info', get: () => (G.perimeter(o.pts) / 100).toFixed(2).replace('.', ',') + ' m' },
         { label: 'Narożniki', type: 'info', get: () => String(o.pts.length) },
@@ -778,16 +779,18 @@
     if (E.clipboard) wrap.append(h('div', { className: 'actions' }, h('button', { title: 'Wklej skopiowany element (Ctrl+V)', onclick: () => E.paste() }, 'Wklej (Ctrl+V)')));
     const m2 = (v) => v.toFixed(2).replace('.', ',') + ' m²';
     const row = (label, v, cls) => wrap.append(h('div', { className: 'row' + (cls ? ' ' + cls : '') }, h('label', {}, label), h('span', { className: 'info' }, m2(v))));
-    let total = 0, garage = 0;
-    p.levels.forEach(lv => {
+    // Powierzchnia użytkowa: pod skosami wg wysokości, garaż osobno, kondygnacje podziemne poza sumą nadziemną.
+    let above = 0, below = 0, garage = 0;
+    p.levels.forEach((lv, i) => {
       let a = 0;
-      lv.rooms.forEach(r => { const s = App.roomNetArea(lv, r); if (App.isGarage(r)) garage += s; else a += s; });
-      total += a;
+      lv.rooms.forEach(r => { const s = App.roomUsableArea(i, r); if (App.isGarage(r)) garage += s; else a += s; });
+      if (i < (p.ground || 0)) below += a; else above += a;
       row(lv.name, a);
     });
     if (garage) row('Garaż', garage);
-    row(garage ? 'Razem bez garażu' : 'Razem (netto)', total, 'total');
-    if (garage) row('Razem z garażem', total + garage);
+    row(garage ? 'Nad ziemią bez garażu' : 'Nad ziemią', above, 'total');
+    if (garage || below) row('Razem' + (below ? ' z piwnicą' : '') + (garage ? ' i garażem' : ''), above + below + garage);
+    wrap.append(h('p', { className: 'muted' }, 'Powierzchnia użytkowa: przy wysokości od 2,2 m liczona w 100%, od 1,4 do 2,2 m w 50%, niżej pomijana.'));
     const lv = App.level();
     wrap.append(h('p', { className: 'muted' },
       `${lv.name}: ścian ${lv.walls.length}, pokoi ${lv.rooms.length}, drzwi ${lv.openings.filter(o => o.kind === 'door').length}, okien ${lv.openings.filter(o => o.kind === 'window').length}.`));

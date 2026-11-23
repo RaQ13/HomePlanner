@@ -503,6 +503,57 @@ window.App = window.App || {};
     });
   };
   App.roomNetArea = (lv, room) => Math.abs(G.area(App.roomNetPolygon(lv, room))) / 10000;
+  // Wysokość w świetle nad punktem planu na kondygnacji i: wysokość kondygnacji ścięta połaciami dachów (z lukarnami).
+  // Zwraca funkcję p => cm (dachy i lukarny liczone raz).
+  App.clearHeightFn = (i) => {
+    const el = App.elevation(i), base = App.levelHeight(App.project.levels[i]), roofs = [];
+    for (let k = 0; k <= i; k++) {
+      const lv = App.project.levels[k];
+      if (!lv.roofs.length || (k === i && !lv.attic)) continue;
+      const dormers = lv.objects.filter(o => o.kind === 'dormer').map(o => App.dormerShape(o, k)).filter(Boolean);
+      lv.roofs.forEach(r => roofs.push({ r, k, ds: dormers.filter(ds => ds.roof === r) }));
+    }
+    return (p) => {
+      let top = base;
+      roofs.forEach(({ r, k, ds }) => {
+        if (!App.roofCovers(r, k, i, [p])) return;
+        let h = App.roofHeightAt(r, k, p);
+        if (h == null) return;
+        ds.forEach(d => { const dh = d.heightAt(p); if (dh != null) h = Math.max(h, dh); });
+        if (h - el > 0) top = Math.min(top, h - el);
+      });
+      return top;
+    };
+  };
+  // Powierzchnia użytkowa pokoju (m²) wg wysokości: od 2,2 m – 100%, 1,4–2,2 m – 50%, poniżej 1,4 m – 0.
+  // Część pokoju zajęta przez mniejszy pokój leżący w jego obrysie (np. WC w pokoju) liczy się tylko raz – w mniejszym.
+  App.roomUsableArea = (i, room, step = 5) => {
+    const lv = App.project.levels[i], poly = App.roomNetPolygon(lv, room);
+    if (poly.length < 3) return 0;
+    const inPoly = (x, y, pp) => {
+      let c = false;
+      for (let a = 0, z = pp.length - 1; a < pp.length; z = a++) {
+        const A = pp[a], B = pp[z];
+        if ((A.y > y) !== (B.y > y) && x < (B.x - A.x) * (y - A.y) / (B.y - A.y) + A.x) c = !c;
+      }
+      return c;
+    };
+    const own = Math.abs(G.area(poly));
+    const inner = lv.rooms.filter(r => r !== room && Math.abs(G.area(r.pts)) < Math.abs(G.area(room.pts))).map(r => App.roomNetPolygon(lv, r));
+    const xs = poly.map(p => p.x), ys = poly.map(p => p.y), hAt = App.clearHeightFn(i);
+    let sum = 0, cnt = 0;
+    for (let x = Math.min(...xs) + step / 2; x < Math.max(...xs); x += step) {
+      for (let y = Math.min(...ys) + step / 2; y < Math.max(...ys); y += step) {
+        if (!inPoly(x, y, poly)) continue;
+        cnt++;
+        if (inner.some(pp => inPoly(x, y, pp))) continue;
+        const h = hAt({ x, y });
+        sum += h >= 220 ? 1 : h >= 140 ? 0.5 : 0;
+      }
+    }
+    // Skalowanie siatki do dokładnego pola obrysu.
+    return cnt ? sum / cnt * own / 1e4 : 0;
+  };
   // Garaż liczony osobno w podsumowaniu: flaga room.garage, a gdy nieustawiona – po nazwie.
   App.isGarage = (room) => room.garage != null ? !!room.garage : /gara[zż]/i.test(room.name || '');
 
