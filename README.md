@@ -111,7 +111,7 @@ Panel **Kondygnacje** po lewej służy do:
 Pozostałe funkcje:
 - **Poddasze**: ściany są przycinane połacią dachu.
 - Podłogę pokoju można obniżyć, np. do garażu na poziomie terenu.
-- Podsumowanie pokazuje powierzchnię użytkową: pod skosami przy wysokości od 2,2 m liczoną w 100%, od 1,4 do 2,2 m w 50%, niżej wcale (z lukarnami). Mniejszy pokój w obrysie większego (np. WC) liczy się raz. Pokój oznaczony jako garaż (domyślnie każdy z „garaż” w nazwie) jest liczony osobno, poza sumą „Nad ziemią”; piwnica też jest poza nią.
+- Podsumowanie pokazuje powierzchnię użytkową: pod skosami przy wysokości od 2,2 m liczoną w 100%, od 1,4 do 2,2 m w 50%, niżej wcale (z lukarnami). Mniejszy pokój w obrysie większego (np. WC) liczy się raz. Pokój oznaczony jako garaż (domyślnie każdy z „garaż” w nazwie) i pomieszczenie pomocnicze (np. gospodarcze – przełącznik w formularzu pokoju) są liczone osobno, poza sumą „Nad ziemią”; piwnica też jest poza nią.
 - Na rzucie widać jako podkład ściany kondygnacji poniżej.
 - Kondygnacja nie jest niższa niż jej najwyższa ściana. Gdy podniesiesz pojedyncze ściany ponad wysokość kondygnacji, strop i kondygnacje powyżej przesuwają się w górę, a na liście kondygnacji widać nową wysokość.
 

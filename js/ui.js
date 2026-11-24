@@ -277,6 +277,7 @@
         { key: 'color', label: 'Kolor podłogi', type: 'color', get: () => o.color, set: editSet(v => { o.color = v; }) },
         { key: 'atGround', label: 'Podłoga na poziomie terenu (np. garaż)', type: 'checkbox', get: () => !!o.atGround, set: editSet(v => { o.atGround = v; }) },
         { key: 'garage', label: 'Garaż (w podsumowaniu osobno)', type: 'checkbox', get: () => App.isGarage(o), set: editSet(v => { o.garage = v; }) },
+        { key: 'aux', label: 'Pomieszczenie pomocnicze (poza pow. użytkową)', type: 'checkbox', get: () => !!o.aux, set: editSet(v => { o.aux = v; }) },
         o.atGround ? null : { key: 'drop', label: 'Podłoga niżej o', unit: 'cm', min: 0, max: 600, get: () => o.drop || 0, set: editSet(v => { o.drop = v; }) },
         { label: 'Rzędna podłogi', type: 'info', get: () => ((App.elevation(App.project.current) - App.roomDrop(o, App.project.current)) / 100).toFixed(2).replace('.', ',') + ' m' },
         { label: 'Pow. netto', type: 'info', get: () => App.roomNetArea(lv, o).toFixed(2).replace('.', ',') + ' m²' },
@@ -780,16 +781,21 @@
     const m2 = (v) => v.toFixed(2).replace('.', ',') + ' m²';
     const row = (label, v, cls) => wrap.append(h('div', { className: 'row' + (cls ? ' ' + cls : '') }, h('label', {}, label), h('span', { className: 'info' }, m2(v))));
     // Powierzchnia użytkowa: pod skosami wg wysokości, garaż osobno, kondygnacje podziemne poza sumą nadziemną.
-    let above = 0, below = 0, garage = 0;
+    let above = 0, below = 0, garage = 0, aux = 0;
     p.levels.forEach((lv, i) => {
       let a = 0;
-      lv.rooms.forEach(r => { const s = App.roomUsableArea(i, r); if (App.isGarage(r)) garage += s; else a += s; });
+      lv.rooms.forEach(r => {
+        const s = App.roomUsableArea(i, r);
+        if (App.isGarage(r)) garage += s; else if (App.isAux(r)) aux += s; else a += s;
+      });
       if (i < (p.ground || 0)) below += a; else above += a;
       row(lv.name, a);
     });
     if (garage) row('Garaż', garage);
-    row(garage ? 'Nad ziemią bez garażu' : 'Nad ziemią', above, 'total');
-    if (garage || below) row('Razem' + (below ? ' z piwnicą' : '') + (garage ? ' i garażem' : ''), above + below + garage);
+    if (aux) row('Pom. pomocnicze', aux);
+    const extra = garage || aux;
+    row(extra ? 'Nad ziemią (użytkowa)' : 'Nad ziemią', above, 'total');
+    if (extra || below) row('Razem z ' + [below && 'piwnicą', garage && 'garażem', aux && 'pomocniczymi'].filter(Boolean).join(', '), above + below + garage + aux);
     wrap.append(h('p', { className: 'muted' }, 'Powierzchnia użytkowa: przy wysokości od 2,2 m liczona w 100%, od 1,4 do 2,2 m w 50%, niżej pomijana.'));
     const lv = App.level();
     wrap.append(h('p', { className: 'muted' },

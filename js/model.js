@@ -556,6 +556,8 @@ window.App = window.App || {};
   };
   // Garaż liczony osobno w podsumowaniu: flaga room.garage, a gdy nieustawiona – po nazwie.
   App.isGarage = (room) => room.garage != null ? !!room.garage : /gara[zż]/i.test(room.name || '');
+  // Powierzchnia pomocnicza (garaż, pom. gospodarcze itp.) – poza powierzchnią użytkową w podsumowaniu.
+  App.isAux = (room) => App.isGarage(room) || !!room.aux;
 
   // ---------- Schody ----------
   App.STAIR_SHAPES = [['straight', 'proste'], ['U', 'dwubiegowe U (zawracające)'], ['L', 'zabiegowe L (z podestem)']];
