@@ -433,7 +433,7 @@
         let top, depth, pit = null;
         if (o.surf === 'ceil') { const cy = ceilingAt(i, c); top = cy - 0.1; depth = lift + thick; }
         else {
-          const room = lv.rooms.find(r => G.inside(c, r.pts)), fl = (i === 0 ? 1 : 0.5) - (room ? App.roomDrop(room, i) : 0);
+          const room = App.roomAt(lv, c), fl = (i === 0 ? 1 : 0.5) - (room ? App.roomDrop(room, i) : 0);
           // Wnęka: dno – płyta grubości stropu pokoju na głębokości drop (od spodu obniża sufit niżej),
           // ścianki boczne od podłogi pokoju do dna.
           const slab = room ? App.roomFloor(i, room).thick : 22, drop = room ? Math.max(0, o.drop || 0) : 0;
@@ -451,7 +451,7 @@
       if (!only) lv.objects.forEach(o => {
         if (o.kind === 'stairs') {
           // Schody w obniżonym pokoju zaczynają się na jego podłodze.
-          const room = lv.rooms.find(r => G.inside(o, r.pts)), drop = room ? App.roomDrop(room, i) : 0;
+          const room = App.roomAt(lv, o), drop = room ? App.roomDrop(room, i) : 0;
           const sg = new THREE.Group();
           sg.position.y = -drop;
           g.add(sg);
@@ -1162,7 +1162,7 @@
   };
   function buildFurniture(parent, o, lv, i) {
     // Mebel stoi na podłodze pokoju (także obniżonej), z – wysokość nad podłogą (szafki wiszące, telewizor).
-    const room = lv.rooms.find(r => G.inside(o, r.pts)), drop = room ? App.roomDrop(room, i) : 0;
+    const room = App.roomAt(lv, o), drop = room ? App.roomDrop(room, i) : 0;
     const g = new THREE.Group();
     g.position.set(o.x, (o.z || 0) - drop, o.y);
     g.rotation.y = -o.rot * Math.PI / 180;

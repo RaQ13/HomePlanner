@@ -115,10 +115,16 @@ window.App = window.App || {};
   // base – najniższa podłoga pokoi przylegających w tym miejscu (pokój obniżony, np. garaż na poziomie terenu),
   // od niej liczą się otwory; foot – spód ściany: na parterze, gdy pod spodem nie ma piwnicy, ściana schodzi do
   // terenu (cokół).
+  // Pokój w punkcie p; gdy pokoje na siebie zachodzą (np. podest narysowany w klatce) – ten najmniejszy, leżący w środku.
+  App.roomAt = (lv, p) => {
+    let best = null, ba = Infinity;
+    lv.rooms.forEach(r => { if (r.pts.length >= 3 && G.inside(p, r.pts)) { const a = Math.abs(G.area(r.pts)); if (a < ba) { ba = a; best = r; } } });
+    return best;
+  };
   App.wallFloorAt = (lv, i, w, t) => {
     const f = App.wallFrame(w), c = { x: w.x1 + f.ux * t, y: w.y1 + f.uy * t }, off = w.t / 2 + 2;
     const sides = [-1, 1].map(sd => ({ x: c.x + f.nx * sd * off, y: c.y + f.ny * sd * off }));
-    const drop = Math.max(0, ...lv.rooms.filter(r => sides.some(p => G.inside(p, r.pts))).map(r => App.roomDrop(r, i)));
+    const drop = Math.max(0, ...sides.map(p => App.roomAt(lv, p)).filter(Boolean).map(r => App.roomDrop(r, i)));
     const elev = App.elevation(i), lower = App.project.levels[i - 1];
     // Pod ścianą (na osi albo po którejś stronie) jest piwnica – cokół nie schodzi do terenu, bo wszedłby w piwnicę.
     const covered = !!lower && (lower.rooms.some(r => [c, ...sides].some(p => G.inside(p, r.pts))) ||
