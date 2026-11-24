@@ -710,7 +710,7 @@
       const d = App.defaults[kind];
       App.edit(() => App.level().openings.push({
         id: App.uid(), kind, wallId: t.wall.id, pos: t.pos, width: t.width, height: d.height,
-        sill: t.sill, flip: false, side: t.side,
+        sill: t.sill, flip: false, side: t.side, ...(kind === 'door' && d.empty ? { empty: true } : {}),
       }));
       E.preview = openingTarget(kind);
     },
@@ -1251,6 +1251,14 @@
       line(P(-hw, 0), P(hw, 0));
       line(P(-hw, -ht), P(hw, -ht));
       line(P(-hw, ht), P(hw, ht));
+    } else if (o.empty) {
+      // Sam otwór: przerywane krawędzie nadproża (otwór od podłogi) albo przekątne (otwór wyżej, nad płaszczyzną rzutu).
+      ctx.lineWidth = px(1);
+      ctx.setLineDash([px(4), px(3)]);
+      line(P(-hw, -ht), P(hw, -ht));
+      line(P(-hw, ht), P(hw, ht));
+      if ((o.sill || 0) > 0) { line(P(-hw, -ht), P(hw, ht)); line(P(-hw, ht), P(hw, -ht)); }
+      ctx.setLineDash([]);
     } else if (o.gate) {
       ctx.setLineDash([px(5), px(3)]);
       line(P(-hw, 0), P(hw, 0));

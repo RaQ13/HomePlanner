@@ -59,6 +59,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 - Pod niskim spocznikiem albo skosem ludzik się schyla. Zatrzymuje się dopiero, gdy wolnej wysokości jest mniej niż 1,2 m. Przez otwór w stropie nad schodami do piwnicy można zejść na schody.
 - Na rzucie widać ludzika i jego pole widzenia. Na czas spaceru drzwi są otwarte i widać cały dom.
 - **Tryb ducha** – klawisz **G** albo przycisk **Duch**: przechodzenie przez ściany i stropy, **spacja** – w górę, **C** – w dół. Ponowne **G** kończy tryb ducha i ludzik ląduje na najbliższej podłodze pod sobą.
+- **Wycinanie otworów** – klawisz **X** albo przycisk **Wytnij otwór**: kliknięcie w ścianę wycina przejście 90 × 200 cm (kliknięcie wysoko – otwór 100 × 100 cm na tej wysokości), w podłogę lub sufit – otwór 100 × 100 cm w tym stropie. Nowy otwór jest zaznaczony, wymiary i położenie poprawia się we właściwościach.
 - **Esc** albo **Zakończ spacer** przywraca poprzedni widok.
 
 ## Narzędzia (klawisze)
@@ -69,7 +70,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 | Ściana | W | Ściany odcinkami; Enter albo prawy przycisk kończy rysowanie; Shift blokuje kąt |
 | Pokój | R | Prostokątny pokój ze ścianami |
 | Pokój dowolny | P | Pokój o dowolnym obrysie |
-| Drzwi / Okno | D / O | Otwór w ścianie; szerokość, wysokość, parapet i próg ustawiasz we Właściwościach |
+| Drzwi / Okno | D / O | Otwór w ścianie; szerokość, wysokość, parapet i próg ustawiasz we Właściwościach; „Sam otwór (bez drzwi)” – przejście albo otwór na dowolnej wysokości, bez ościeżnicy i skrzydła |
 | Fragment podł./sufitu | B | Osobny kawałek podłogi albo sufitu (wielokąt): własny kolor, tekstura, podest nad podłogą, podłoga niżej (wnęka), obniżony sufit albo otwór w podłodze na wylot (np. szyb zejścia do piwnicy); zaznaczany w 2D i 3D |
 | Otwór w stropie | X | Otwór na wylot w podłodze bieżącej kondygnacji (strop nad kondygnacją niżej), np. szyb schodów albo antresola; otwory mogą na siebie nachodzić i dochodzić do ścian |
 | Schody | S | Schody proste, L i U z obliczaniem stopni; wysokość schodów (puste – do stropu); wysokość spocznika, w schodach U różne długości biegów (np. dłuższy 1. bieg nad pomieszczeniem); schody zaczynają się od podłogi, z której wchodzi się na 1. stopień (np. podest); poręcz (strona, pręt albo ścianka, wysokość, tekstura), skośny spód biegu, „Sufit skośny nad schodami” (prześwit nad stopniami), „Zabudowa pod schodami” |

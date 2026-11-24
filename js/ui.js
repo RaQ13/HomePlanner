@@ -305,13 +305,16 @@
       const free = w && App.openingFree(w, o);
       spec.push({ key: 'pos', label: 'Oś od początku ściany', unit: 'cm', min: free ? -Math.floor(L) : 0, max: Math.floor(free ? 2 * L : L), get: () => Math.round(w ? App.openingPos(w, o) : o.pos), set: editSet(v => { o.pos = v; }) });
       if (o.kind === 'door') {
-        spec.push({ key: 'sill', label: 'Próg nad podłogą (ujemny – niżej)', unit: 'cm', min: -400, max: 300, get: () => o.sill || 0, set: editSet(v => { o.sill = v; }) });
-        spec.push({ key: 'gate', label: 'Brama garażowa', type: 'checkbox', get: () => !!o.gate, set: editSet(v => { o.gate = v; }) });
-        spec.push({ key: 'flip', label: 'Zawiasy po drugiej stronie', type: 'checkbox', get: () => o.flip, set: editSet(v => { o.flip = v; }) });
-        spec.push({ key: 'side', label: 'Otwieranie na drugą stronę', type: 'checkbox', get: () => o.side, set: editSet(v => { o.side = v; }) });
+        spec.push({ key: 'sill', label: o.empty ? 'Dół otworu nad podłogą' : 'Próg nad podłogą (ujemny – niżej)', unit: 'cm', min: -400, max: 1000, get: () => o.sill || 0, set: editSet(v => { o.sill = v; }) });
+        spec.push({ key: 'empty', label: 'Sam otwór (bez drzwi)', type: 'checkbox', get: () => !!o.empty, set: editSet(v => { o.empty = v; if (v) o.gate = false; }) });
+        if (!o.empty) {
+          spec.push({ key: 'gate', label: 'Brama garażowa', type: 'checkbox', get: () => !!o.gate, set: editSet(v => { o.gate = v; }) });
+          spec.push({ key: 'flip', label: 'Zawiasy po drugiej stronie', type: 'checkbox', get: () => o.flip, set: editSet(v => { o.flip = v; }) });
+          spec.push({ key: 'side', label: 'Otwieranie na drugą stronę', type: 'checkbox', get: () => o.side, set: editSet(v => { o.side = v; }) });
+        }
       }
-      spec.push(...texFields(o, 'tex', o.kind === 'window' ? 'Tekstura ramy' : 'Tekstura'));
-      return form(o.kind === 'window' ? 'Okno' : o.gate ? 'Brama' : 'Drzwi', spec, [del]);
+      if (!o.empty) spec.push(...texFields(o, 'tex', o.kind === 'window' ? 'Tekstura ramy' : 'Tekstura'));
+      return form(o.kind === 'window' ? 'Okno' : o.empty ? 'Otwór w ścianie' : o.gate ? 'Brama' : 'Drzwi', spec, [del]);
     }
     if (sel.kind === 'roof') {
       const p = App.project, tan = () => Math.tan(o.pitch * Math.PI / 180);
@@ -740,6 +743,7 @@
     if (t === 'door') return form('Nowe drzwi', [
       { key: 'dw', label: 'Szerokość', unit: 'cm', min: 30, max: 400, get: () => d.door.width, set: defSet(d.door, 'width') },
       { key: 'dh', label: 'Wysokość', unit: 'cm', min: 100, max: 400, get: () => d.door.height, set: defSet(d.door, 'height') },
+      { key: 'de', label: 'Sam otwór (przejście bez drzwi)', type: 'checkbox', get: () => !!d.door.empty, set: defSet(d.door, 'empty') },
     ]);
     if (t === 'window') return form('Nowe okno', [
       { key: 'dw', label: 'Szerokość', unit: 'cm', min: 20, max: 600, get: () => d.window.width, set: defSet(d.window, 'width') },
@@ -832,7 +836,7 @@
     wrap.append(h('p', { className: 'muted' }, 'Powierzchnia użytkowa: przy wysokości od 2,2 m liczona w 100%, od 1,4 do 2,2 m w 50%, niżej pomijana.'));
     const lv = App.level();
     wrap.append(h('p', { className: 'muted' },
-      `${lv.name}: ścian ${lv.walls.length}, pokoi ${lv.rooms.length}, drzwi ${lv.openings.filter(o => o.kind === 'door').length}, okien ${lv.openings.filter(o => o.kind === 'window').length}.`));
+      `${lv.name}: ścian ${lv.walls.length}, pokoi ${lv.rooms.length}, drzwi ${lv.openings.filter(o => o.kind === 'door' && !o.empty).length}, okien ${lv.openings.filter(o => o.kind === 'window').length}.`));
     const ground = p.levels[p.ground || 0];
     ground.plots.forEach(o => wrap.append(h('div', { className: 'row' }, h('label', {}, o.name || 'Działka'), h('span', { className: 'info' }, App.fmtArea(o.pts)))));
     const hidden = App.hiddenCount();
@@ -1087,10 +1091,12 @@
     const pickBtn = $('#btn-3d-pick');
     const hint3d = () => {
       const on = V3.pick;
-      $('#hint3d').textContent = V3.walkGhostOn()
+      $('#hint3d').textContent = V3.walkCutOn()
+        ? 'Wycinanie: kliknij ścianę – przejście (wysoko – otwór na wysokości kliknięcia), podłogę lub sufit – otwór w stropie; wymiary popraw we właściwościach · X – koniec wycinania · przeciąganie – rozglądanie'
+        : V3.walkGhostOn()
         ? 'Duch: W/S/A/D – ruch przez ściany · spacja – w górę · C – w dół · ←/→ lub Q/E – obrót · Shift – szybciej · G – koniec trybu ducha (lądowanie na podłodze) · Esc – koniec spaceru'
         : V3.walking()
-        ? 'Spacer: W/S lub ↑/↓ – naprzód/wstecz · A/D – w bok · ←/→ lub Q/E – obrót · Shift – bieg · przeciąganie – rozglądanie · dwuklik – przejdź tam · kółko – przybliżenie · G – tryb ducha · Esc – koniec'
+        ? 'Spacer: W/S lub ↑/↓ – naprzód/wstecz · A/D – w bok · ←/→ lub Q/E – obrót · Shift – bieg · przeciąganie – rozglądanie · dwuklik – przejdź tam · kółko – przybliżenie · G – tryb ducha · X – wycinanie otworów · Esc – koniec'
         : on ? 'Kliknij element, aby go zaznaczyć · przeciąganie – obrót · prawy – przesuw · kółko – zoom'
           : 'Lewy przycisk – obrót · prawy – przesuw · kółko – zoom · ludzik w rogu – spacer po domu';
     };
@@ -1134,11 +1140,14 @@
     };
     $('#btn-walk-exit').onclick = V3.walkStop;
     $('#btn-walk-ghost').onclick = () => V3.walkGhost();
+    $('#btn-walk-cut').onclick = () => V3.walkCut();
     App.on('walk', (on) => {
       peg.hidden = on;
       $('#btn-walk-exit').hidden = !on;
       $('#btn-walk-ghost').hidden = !on;
       $('#btn-walk-ghost').classList.toggle('active', V3.walkGhostOn());
+      $('#btn-walk-cut').hidden = !on;
+      $('#btn-walk-cut').classList.toggle('active', V3.walkCutOn());
       $('#view3d').classList.toggle('walking', on);
       hint3d();
     });

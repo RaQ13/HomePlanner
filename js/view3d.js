@@ -691,6 +691,8 @@
   }
 
   function buildDoor(g, op, T) {
+    // Sam otwór (przejście bez drzwi): tylko wycięcie w ścianie, bez ościeżnicy i skrzydła.
+    if (op.o.empty) return;
     const fw = 7, fd = Math.min(12, T), frame = mat('#6e4a2c'), leaf = mat('#a8794c');
     const { a, b, top } = op;
     if (op.o.gate) {
@@ -1673,6 +1675,46 @@
     App.emit('walk', true);
   };
   V.walkGhostOn = () => !!(W.on && W.ghost);
+  // Wycinanie otworów ze spaceru: kliknięcie w ścianę – przejście (albo otwór na wysokości kliknięcia),
+  // w podłogę lub sufit – otwór 100 × 100 cm w tej płycie. Nowy element jest zaznaczany do dalszej edycji.
+  V.walkCut = (on) => {
+    if (!W.on) return;
+    W.cut = on == null ? !W.cut : !!on;
+    if (renderer) renderer.domElement.style.cursor = W.cut ? 'crosshair' : '';
+    App.emit('walk', true);
+  };
+  V.walkCutOn = () => !!(W.on && W.cut);
+  function cutAt(e) {
+    const el = renderer.domElement, r = el.getBoundingClientRect(), ray = caster();
+    ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+    const h = ray.intersectObjects(root.children, true).find(x => x.object.isMesh && x.object.visible && !x.object.userData.noPick);
+    if (!h) return;
+    const pk = pickOf(h.object);
+    if (!pk || pk.level == null) return;
+    const p = App.project, lv = p.levels[pk.level], f = lv && App.find(pk.id, lv);
+    if (!f) return;
+    const pt = { x: h.point.x * 100, y: h.point.z * 100 }, ny = upNormal(h);
+    let created = null;
+    if (f.kind === 'wall' && Math.abs(ny) < 0.5) {
+      const w = f.obj, fr = App.wallFrame(w), pr = G.project(pt, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 });
+      const t = pr.t * fr.L, z = h.point.y * 100 - App.elevation(pk.level) - App.wallFloorAt(lv, pk.level, w, t).base;
+      // Kliknięcie nisko – przejście od podłogi; wysoko – otwór 100 × 100 na wysokości kliknięcia.
+      const high = z > 170, width = Math.min(high ? 100 : 90, fr.L), height = high ? 100 : 200, sill = high ? Math.max(0, Math.round(z - 50)) : 0;
+      const pos = G.clamp(Math.round(t), width / 2, fr.L - width / 2);
+      const clash = lv.openings.some(o => o.wallId === w.id && Math.abs(App.openingPos(w, o) - pos) < (o.width + width) / 2 - 0.5 &&
+        App.openingSill(o) < sill + height && sill < App.openingSill(o) + o.height);
+      if (clash) { const el3 = document.getElementById('hint3d'); if (el3) el3.textContent = 'Tu jest już okno albo drzwi – kliknij obok (X – koniec wycinania)'; return; }
+      created = { list: 'openings', obj: { id: App.uid(), kind: 'door', empty: true, wallId: w.id, pos, width, height, sill, flip: false, side: false } };
+    } else if (f.kind === 'room' && Math.abs(ny) > 0.5) {
+      const s = 50, c = { x: Math.round(pt.x), y: Math.round(pt.y) };
+      const a = App.makeArea([{ x: c.x - s, y: c.y - s }, { x: c.x + s, y: c.y - s }, { x: c.x + s, y: c.y + s }, { x: c.x - s, y: c.y + s }], 'hole');
+      created = { list: 'areas', obj: a };
+    }
+    if (!created) return;
+    App.edit(() => { lv[created.list] = lv[created.list] || []; lv[created.list].push(created.obj); });
+    if (pk.level !== p.current) { p.current = pk.level; App.emit('change'); }
+    App.select(created.obj.id);
+  }
   // Kondygnacja w trybie ducha – z wysokości oczu nad rzędnymi kondygnacji.
   function ghostLevel() {
     const y = W.pos.y * 100 + 20, lv = App.project.levels;
@@ -1808,6 +1850,8 @@
   V.walkStop = () => {
     if (!W.on) return;
     W.on = false;
+    W.cut = false;
+    if (renderer) renderer.domElement.style.cursor = '';
     W.ghost = false;
     W.keys.clear();
     const s = W.saved;
@@ -1830,6 +1874,10 @@
       if (!W.on) return;
       look = { x: e.clientX, y: e.clientY, yaw: W.yaw, pitch: W.pitch };
       el.setPointerCapture(e.pointerId);
+    });
+    // Tryb wycinania: kliknięcie bez przeciągania wycina otwór.
+    el.addEventListener('pointerup', (e) => {
+      if (W.on && W.cut && look && e.button === 0 && Math.hypot(e.clientX - look.x, e.clientY - look.y) < 5) cutAt(e);
     });
     el.addEventListener('pointermove', (e) => {
       if (!W.on || !look || !e.buttons) return;
@@ -1863,6 +1911,7 @@
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (e.key === 'Escape') { V.walkStop(); }
       else if (e.code === 'KeyG') { if (!e.repeat) V.walkGhost(); }
+      else if (e.code === 'KeyX') { if (!e.repeat) V.walkCut(); }
       else if (MOVE.has(e.code)) W.keys.add(e.code);
       else return;
       e.preventDefault();
