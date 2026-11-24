@@ -475,7 +475,13 @@
         let objs = [];
         if (o.kind === 'roofwin') { if (roofs) objs = tagged(root, o.id, i, () => buildRoofWin(o, i)); }
         else if (o.kind === 'dormer') { if (roofs) objs = tagged(root, o.id, i, () => buildDormer(o, i, wallMat)); }
-        else objs = tagged(g, o.id, i, () => buildChimney(g, o, i, elev, to));
+        else {
+          // Komin stoi na najniższej podłodze pokoi, które go dotykają (obniżony pokój obok komina).
+          const f = { x: o.x, y: o.y, rot: o.rot || 0 }, hl = o.l / 2 + 8, hw = o.w / 2 + 8;
+          const probes = [[0, 0], [-hl, -hw], [hl, -hw], [hl, hw], [-hl, hw], [0, -hw], [0, hw], [-hl, 0], [hl, 0]].map(([a, b]) => G.local(f, a, b));
+          const drop = Math.max(0, ...lv.rooms.filter(r => r.pts.length >= 3 && probes.some(q => G.inside(q, r.pts))).map(r => App.roomDrop(r, i)));
+          objs = tagged(g, o.id, i, () => buildChimney(g, o, i, elev - drop, to));
+        }
         // Lukarna: tekstura na jej dach; pozostałe obiekty – na całą bryłę.
         if (o.tex) objs.forEach(x => applyTexture(meshesOf([x], m => solid(m) && (o.kind !== 'dormer' || m.material.polygonOffset)), o.tex, x));
       });
@@ -1233,9 +1239,9 @@
     g.add(inner);
   }
 
-  // base – rzędna dołu (względem rodzica), to – rzędna bezwzględna, powyżej której komin jest ukryty.
+  // base – rzędna bezwzględna dołu komina, to – rzędna bezwzględna, powyżej której komin jest ukryty.
   function buildChimney(parent, o, i, base, to = Infinity) {
-    const top = App.chimneyTop(o, i), parentY = parent === root ? 0 : base;
+    const top = App.chimneyTop(o, i), parentY = parent === root ? 0 : App.elevation(i);
     const h = Math.min(top, to) - base;
     if (h <= 0) return;
     const g = new THREE.Group();
