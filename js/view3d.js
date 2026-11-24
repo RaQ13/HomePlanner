@@ -415,7 +415,7 @@
         const lift = (i === 0 ? 1 : 0.5) - fl.drop;
         // Fragmenty podłogi obniżone (wnęka, np. brodzik) – otwór w płycie podłogi pokoju.
         const pits = lv.areas.filter(a => a.surf !== 'ceil' && a.drop > 0 && a.pts.length >= 3 && G.inside(G.centroid(a.pts), r.pts)).map(a => a.pts);
-        const objs = tagged(g, r.id, i, () => buildFloor(g, outline, fl.thick, lift, p.levels[i - 1], r.color, pits));
+        const objs = tagged(g, r.id, i, () => buildFloor(g, outline, fl.thick, lift, p.levels[i - 1], r.color, pits, elev + lift));
         if (only) return ghost(objs, 0.06);
         // Tekstura podłogi tylko na wierzchu płyty – spód (sufit kondygnacji niżej) i krawędzie bez niej.
         if (r.texFloor) applyTexture(objs.filter(o => o.isMesh), r.texFloor, g, (n) => n.y > 0.5);
@@ -803,7 +803,9 @@
   }
   // Czy otwór hp dochodzi do krawędzi obrysu (co najmniej dwa wierzchołki na krawędzi).
   const touchesEdge = (pts, hp) => hp.filter(q => pts.some((p, k) => G.project(q, p, pts[(k + 1) % pts.length]).d < 0.6)).length >= 2;
-  function buildFloor(parent, pts, thick, lift, below, color, pits = []) {
+  // floorZ – rzędna wierzchu podłogi (cm): schody z niższej kondygnacji wycinają otwór tylko w podłodze, na którą
+  // wychodzą (albo niższej); podłoga wyżej nad nimi (np. podest nad zejściem do piwnicy) zostaje pełna.
+  function buildFloor(parent, pts, thick, lift, below, color, pits = [], floorZ = null) {
     pits = pits.slice();
     if (pts.length < 3 || Math.abs(G.area(pts)) < 100) return;
     // Otwory dochodzące do krawędzi płyty: wcięcie w obrysie albo – gdy przecinają płytę na wylot – podział płyty
@@ -822,7 +824,9 @@
     };
     const stairHoles = [];
     if (below) {
+      const bi = App.project.levels.indexOf(below);
       below.objects.filter(o => o.kind === 'stairs').forEach(o => {
+        if (floorZ != null && bi >= 0 && floorZ > App.elevation(bi) + App.stairHeight(o, below) + 30) return;
         const rc = G.rectCorners(o);
         if (rc.every(q => G.inside(q, pts)) && !touchesEdge(pts, rc)) return stairHoles.push(o);
         // Schody tylko częściowo pod płytą (np. pod obniżonym fragmentem) – otwór w części wspólnej.
