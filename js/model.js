@@ -506,6 +506,19 @@ window.App = window.App || {};
     return pa.d < 1 && pb.d < 1 && pa.t > -0.001 && pa.t < 1.001 && pb.t > -0.001 && pb.t < 1.001;
   });
 
+  // Ściana na tej samej prostej co krawędź a-b, pokrywająca ją tylko częściowo (np. krawędź z przejściem bez drzwi
+  // między dwiema ścianami) – ta o największym wspólnym odcinku; lico ściany wyznacza wtedy obrys całej krawędzi.
+  App.edgeWallPart = (lv, a, b) => {
+    let best = null, bestLen = 10;
+    lv.walls.forEach(o => {
+      const f = App.wallFrame(o);
+      const along = (p) => (p.x - o.x1) * f.ux + (p.y - o.y1) * f.uy, off = (p) => Math.abs((p.x - o.x1) * f.nx + (p.y - o.y1) * f.ny);
+      if (off(a) > 1 || off(b) > 1) return;
+      const ta = along(a), tb = along(b), len = Math.min(f.L, Math.max(ta, tb)) - Math.max(0, Math.min(ta, tb));
+      if (len > bestLen) { bestLen = len; best = o; }
+    });
+    return best;
+  };
   // Czy krawędź pokoju a-b i ściana o leżą na jednej prostej i zachodzą na siebie?
   App.edgeOnWall = (o, a, b) => {
     const p1 = { x: o.x1, y: o.y1 }, p2 = { x: o.x2, y: o.y2 }, L = App.wallFrame(o).L;
@@ -525,7 +538,7 @@ window.App = window.App || {};
     const lines = pts.map((a, i) => {
       const b = pts[(i + 1) % n], L = G.dist(a, b) || 1e-6;
       const dx = (b.x - a.x) / L, dy = (b.y - a.y) / L;
-      const w = App.edgeWall(lv, a, b), off = w ? w.t / 2 : 0;
+      const w = App.edgeWall(lv, a, b) || App.edgeWallPart(lv, a, b), off = w ? w.t / 2 : 0;
       const nx = -dy * sign, ny = dx * sign;
       return { px: a.x + nx * off, py: a.y + ny * off, dx, dy };
     });
