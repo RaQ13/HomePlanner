@@ -37,6 +37,7 @@
     chimney: 'Kliknij, aby postawić komin. T – obrót o 90°.',
     install: 'Wybierz element instalacji po prawej. Gniazdka, łączniki i podejścia – kliknij przy licu ściany (strona kursora wyznacza lico). Przewody i rury – klikaj kolejne punkty (przyciągają do osi ścian i punktów instalacji), Enter lub prawy klik – zakończ.',
     furniture: 'Wybierz mebel z katalogu po prawej i kliknij na rzucie. Przy ścianie mebel sam obraca się do niej tyłem (Shift – bez przyciągania). T – obrót o 90°, M – odbicie.',
+    hole: 'Klikaj narożniki otworu w podłodze (przez strop na wylot). Kliknij pierwszy punkt lub Enter, aby zamknąć. Wpisz długość boku w cm i Enter. Backspace – cofnij punkt.',
     area: 'Klikaj narożniki fragmentu podłogi lub sufitu (rodzaj wybierz po lewej). Kliknij pierwszy punkt lub Enter, aby zamknąć. Wpisz długość boku w cm i Enter. Backspace – cofnij punkt.',
     plot: 'Klikaj narożniki działki. Kliknij pierwszy punkt lub Enter, aby zamknąć. Wpisz długość boku w cm i Enter. Backspace – cofnij punkt.',
     path: 'Pas: klikaj kolejne punkty osi chodnika (szerokość po prawej), Enter lub prawy klik – zakończ. Obszar: klikaj narożniki, zamknij pierwszym punktem lub Enterem.',
@@ -111,7 +112,7 @@
 
   // Narzędzia terenu działają na kondygnacji na poziomie terenu (parter).
   const SITE_TOOLS = ['plot', 'path', 'fence', 'garden'];
-  const POLY_TOOLS = ['poly', 'plot', 'path', 'fence', 'area'];
+  const POLY_TOOLS = ['poly', 'plot', 'path', 'fence', 'area', 'hole'];
   E.setTool = (id) => {
     E.cancel();
     const p = App.project;
@@ -674,11 +675,12 @@
     }
     if (t === 'fence' && pts.length >= 2) obj = App.makeFence(pts, closed && pts.length >= 3);
     if (t === 'area' && area) obj = App.makeArea(pts, App.defaults.area.surf);
+    if (t === 'hole' && area) obj = App.makeArea(pts, 'hole');
     if (!obj) return;
     App.edit(() => lv[obj.kind + 's'].push(obj));
     App.select(obj.id);
   }
-  tools.plot = tools.path = tools.fence = tools.area = tools.poly;
+  tools.plot = tools.path = tools.fence = tools.area = tools.hole = tools.poly;
   tools.garden = { down() { tools.furniture.down(); } };
 
   function openingTarget(kind) {

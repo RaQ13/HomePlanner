@@ -715,13 +715,6 @@
     box(g, mat('#c9c9c9', { metalness: 0.7, roughness: 0.3 }), hx - 6, hx + 6, 100, 104, 10);
   }
 
-  function rectPath(o, PathCls) {
-    const c = G.rectCorners(o), path = new PathCls();
-    c.forEach((q, i) => (i ? path.lineTo(q.x, q.y) : path.moveTo(q.x, q.y)));
-    path.closePath();
-    return path;
-  }
-
   // Podłoga strychu kończy się tam, gdzie połać poddasza schodzi poniżej stropu.
   function floorOutline(pts, under, elev) {
     const c = G.centroid(pts);
@@ -744,54 +737,6 @@
     }
     return true;
   };
-  // Otwór hp (wypukły, w obrysie pts) dochodzący do krawędzi obrysu – zamiast dziury wcięcie w obrysie, żeby boczna
-  // ściana płyty nie została w poprzek otworu. Zwraca nowy obrys albo null, gdy otwór nie dotyka krawędzi.
-  function notchOutline(pts, hp) {
-    const n = pts.length, eps = 0.6;
-    const where = (q) => {
-      let best = null;
-      for (let k = 0; k < n; k++) {
-        const pr = G.project(q, pts[k], pts[(k + 1) % n]);
-        if (pr.d < eps && (!best || pr.d < best.d)) best = { k, t: pr.tc, d: pr.d };
-      }
-      return best;
-    };
-    const on = hp.map(where), m = hp.length;
-    if (on.filter(Boolean).length < 2) return null;
-    let i = -1;
-    for (let k = 0; k < m; k++) if (on[k] && !on[(k + 1) % m]) { i = k; break; }
-    if (i < 0) return null;
-    const chain = [];
-    let j = (i + 1) % m;
-    while (!on[j]) { chain.push(hp[j]); j = (j + 1) % m; if (chain.length > m) return null; }
-    const A = hp[i], B = hp[j], wa = on[i], wb = on[j];
-    // Odcinek obrysu od P do Q w kierunku obrysu (z wierzchołkami pośrodku).
-    const walk = (P, wp, Q, wq) => {
-      const out = [P];
-      if (wp.k === wq.k && wq.t >= wp.t) { out.push(Q); return out; }
-      let k = (wp.k + 1) % n;
-      for (let s = 0; s < n; s++) { out.push(pts[k]); if (k === wq.k) break; k = (k + 1) % n; }
-      out.push(Q);
-      return out;
-    };
-    // Usuwany jest ten łuk obrysu między A i B, który leży na brzegu otworu.
-    const arcAB = walk(A, wa, B, wb), mid = (arc) => {
-      const L = arc.slice(1).reduce((s, q, k) => s + Math.hypot(q.x - arc[k].x, q.y - arc[k].y), 0) / 2;
-      let acc = 0;
-      for (let k = 1; k < arc.length; k++) {
-        const d = Math.hypot(arc[k].x - arc[k - 1].x, arc[k].y - arc[k - 1].y);
-        if (acc + d >= L) { const t = (L - acc) / (d || 1); return { x: arc[k - 1].x + (arc[k].x - arc[k - 1].x) * t, y: arc[k - 1].y + (arc[k].y - arc[k - 1].y) * t }; }
-        acc += d;
-      }
-      return arc[0];
-    };
-    const onHole = (q) => hp.some((p, k) => G.project(q, p, hp[(k + 1) % m]).d < eps * 2);
-    const out = onHole(mid(arcAB))
-      ? walk(B, wb, A, wa).concat(chain)
-      : arcAB.concat(chain.slice().reverse());
-    const res = out.filter((q, k) => { const p = out[(k + out.length - 1) % out.length]; return Math.hypot(q.x - p.x, q.y - p.y) > 0.01; });
-    return res.length >= 3 && Math.abs(G.area(res)) > 100 ? res : null;
-  }
   // Prosta przez a, b przycina wielokąt – zostaje strona keep (+1 lewa, -1 prawa).
   function halfClip(poly, a, b, keep) {
     const side = (q) => ((b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x)) * keep;
@@ -810,58 +755,75 @@
     for (let k = 0; k < H.length && rem.length >= 3; k++) {
       const a = H[k], b = H[(k + 1) % H.length];
       const piece = halfClip(rem, a, b, -s);
-      if (piece.length >= 3 && Math.abs(G.area(piece)) > 100) out.push(piece);
+      if (!sliver(piece)) out.push(piece);
       rem = halfClip(rem, a, b, s);
     }
     return out;
   }
-  // Czy otwór hp dochodzi do krawędzi obrysu (co najmniej dwa wierzchołki na krawędzi).
-  const touchesEdge = (pts, hp) => hp.filter(q => pts.some((p, k) => G.project(q, p, pts[(k + 1) % pts.length]).d < 0.6)).length >= 2;
+  // Kawałek pomijalny: brak pola albo pasek węższy niż ok. 1 cm (resztka na styku krawędzi).
+  const sliver = (pc) => {
+    if (pc.length < 3) return true;
+    const A = Math.abs(G.area(pc)), per = pc.reduce((s, q, k) => s + Math.hypot(pc[(k + 1) % pc.length].x - q.x, pc[(k + 1) % pc.length].y - q.y), 0);
+    return A < 1 || A / per < 0.5;
+  };
+  // Podział wielokąta na wypukłe części: trójkąty łączone z sąsiadami, dopóki wynik zostaje wypukły.
+  function convexParts(pts) {
+    if (convex(pts)) return [pts];
+    const ccw = G.area(pts) > 0 ? pts : pts.slice().reverse();
+    let polys = THREE.ShapeUtils.triangulateShape(ccw.map(q => new THREE.Vector2(q.x, q.y)), [])
+      .map(t => (G.area(t.map(k => ccw[k])) > 0 ? t.slice() : t.slice().reverse()));
+    const merge = (A, B) => {
+      for (let i = 0; i < A.length; i++) {
+        const u = A[i], v = A[(i + 1) % A.length], j = B.findIndex((x, k) => x === v && B[(k + 1) % B.length] === u);
+        if (j < 0) continue;
+        // A od v do u (dookoła), potem B bez u i v.
+        const ra = [], rb = [];
+        for (let k = 0; k < A.length; k++) ra.push(A[(i + 1 + k) % A.length]);
+        for (let k = 2; k < B.length; k++) rb.push(B[(j + k) % B.length]);
+        const m = ra.concat(rb);
+        if (convex(m.map(k => ccw[k]))) return m;
+      }
+      return null;
+    };
+    for (let changed = true; changed;) {
+      changed = false;
+      outer: for (let i = 0; i < polys.length; i++) for (let j = i + 1; j < polys.length; j++) {
+        const m = merge(polys[i], polys[j]);
+        if (m) { polys[i] = m; polys.splice(j, 1); changed = true; break outer; }
+      }
+    }
+    return polys.map(p => p.map(k => ccw[k]));
+  }
+  // Płyta bez otworów: obrys dzielony na wypukłe kawałki, z których odejmowane są otwory (też dzielone na wypukłe).
+  // Otwory mogą na siebie nachodzić i dochodzić do krawędzi – kawałki nie mają dziur, krawędzie otworów to boki płyty.
+  function slabPieces(pts, holes) {
+    let pieces = convexParts(pts);
+    holes.flatMap(convexParts).forEach(H => {
+      if (H.length < 3 || Math.abs(G.area(H)) < 1) return;
+      pieces = pieces.flatMap(P => {
+        const common = G.clipConvex(P, H);
+        if (common.length < 3 || Math.abs(G.area(common)) < 1) return [P];
+        return convexDiff(P, H);
+      });
+    });
+    return pieces.filter(pc => !sliver(pc));
+  }
   // floorZ – rzędna wierzchu podłogi (cm): schody z niższej kondygnacji wycinają otwór tylko w podłodze, na którą
   // wychodzą (albo niższej); podłoga wyżej nad nimi (np. podest nad zejściem do piwnicy) zostaje pełna.
   function buildFloor(parent, pts, thick, lift, below, color, pits = [], floorZ = null) {
-    pits = pits.slice();
     if (pts.length < 3 || Math.abs(G.area(pts)) < 100) return;
-    // Otwory dochodzące do krawędzi płyty: wcięcie w obrysie albo – gdy przecinają płytę na wylot – podział płyty
-    // na części. Wtedy boczna ściana płyty nie zostaje w poprzek otworu.
-    let pieces = [pts];
-    const cutEdge = (hp) => {
-      let done = false;
-      pieces = pieces.flatMap(pc => {
-        if (!touchesEdge(pc, hp)) return [pc];
-        const r = notchOutline(pc, hp);
-        if (r) { done = true; return [r]; }
-        if (convex(pc)) { done = true; return convexDiff(pc, hp); }
-        return [pc];
-      });
-      return done;
-    };
-    const stairHoles = [];
+    const holes = pits.slice();
     if (below) {
       const bi = App.project.levels.indexOf(below);
       below.objects.filter(o => o.kind === 'stairs').forEach(o => {
         if (floorZ != null && bi >= 0 && floorZ > App.elevation(bi) + App.stairTop(o, below, bi) + 30) return;
-        const rc = G.rectCorners(o);
-        if (rc.every(q => G.inside(q, pts)) && !touchesEdge(pts, rc)) return stairHoles.push(o);
-        // Schody tylko częściowo pod płytą (np. pod obniżonym fragmentem) – otwór w części wspólnej.
-        if (!convex(pts)) return;
-        const cut = G.clipConvex(rc, pts);
-        if (cut.length >= 3 && Math.abs(G.area(cut)) > 100 && !cutEdge(cut)) pits.push(cut);
+        holes.push(G.rectCorners(o));
       });
     }
-    pits = pits.filter(hp => !cutEdge(hp));
-    pieces.forEach(pc => {
+    slabPieces(pts, holes).forEach(pc => {
       const shape = new THREE.Shape();
       pc.forEach((q, i) => (i ? shape.lineTo(q.x, q.y) : shape.moveTo(q.x, q.y)));
       shape.closePath();
-      // Otwory w stropie nad schodami z niższej kondygnacji.
-      stairHoles.forEach(o => { if (G.inside(G.rectCorners(o)[0], pc)) shape.holes.push(rectPath(o, THREE.Path)); });
-      // Otwory pod obniżone fragmenty podłogi, minimalnie zmniejszone (mogą dochodzić do ścian pokoju).
-      pits.forEach(hp => {
-        const c = G.centroid(hp);
-        if (!G.inside(c, pc)) return;
-        shape.holes.push(new THREE.Path(hp.map(q => { const d = Math.hypot(q.x - c.x, q.y - c.y) || 1, k = Math.max(0, 1 - 0.3 / d); return new THREE.Vector2(c.x + (q.x - c.x) * k, c.y + (q.y - c.y) * k); })));
-      });
       const geo = new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false });
       geo.rotateX(Math.PI / 2);
       const m = mesh(geo, mat(color || '#dddddd'), parent);

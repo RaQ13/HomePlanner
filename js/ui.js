@@ -33,6 +33,7 @@
     { id: 'furniture', name: 'Meble', key: 'E', icon: svg('<path d="M4 11V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"/><path d="M3 11h18v5H3zM5 16v3M19 16v3"/>') },
     { id: 'roof', name: 'Dach', key: 'A', icon: svg('<path d="M2 13l10-8 10 8"/><path d="M5 11v8h14v-8"/>') },
     { id: 'area', name: 'Fragment podł./sufitu', key: 'B', icon: svg('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M9 10h8v6H9z" fill="currentColor" fill-opacity=".3" stroke-dasharray="2 1.5"/>') },
+    { id: 'hole', name: 'Otwór w stropie', key: 'X', icon: svg('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M8 9h8v6H8z"/><path d="M8 9l8 6M16 9l-8 6"/>') },
     { id: 'plot', name: 'Działka', key: 'G', icon: svg('<path d="M3 7l8-4 10 5-3 12-14-2z" stroke-dasharray="4 2"/>') },
     { id: 'path', name: 'Nawierzchnia', key: 'N', icon: svg('<path d="M6 21l4-18M18 21l-4-18"/><path d="M12 5v2M12 11v2M12 17v2"/>') },
     { id: 'fence', name: 'Płot', key: 'Z', icon: svg('<path d="M5 21V7l2-3 2 3v14M15 21V7l2-3 2 3v14M3 10h18M3 16h18"/>') },
@@ -774,6 +775,9 @@
     if (t === 'area') return form('Nowy fragment', [
       { key: 'ds', label: 'Rodzaj', type: 'select', options: [['floor', 'fragment podłogi'], ['ceil', 'fragment sufitu'], ['hole', 'otwór w podłodze (na wylot)']], get: () => d.area.surf, set: defSet(d.area, 'surf') },
       { label: 'Wskazówka', type: 'info', get: () => 'Klikaj narożniki; osobny kolor, tekstura i wysokość' },
+    ]);
+    if (t === 'hole') return form('Nowy otwór', [
+      { label: 'Wskazówka', type: 'info', get: () => 'Klikaj narożniki otworu w podłodze bieżącej kondygnacji (strop nad kondygnacją niżej), np. szyb schodów, antresola' },
     ]);
     if (t === 'plot') return form('Nowa działka', [
       { key: 'dc', label: 'Kolor terenu', type: 'color', get: () => d.plot.color, set: defSet(d.plot, 'color') },
