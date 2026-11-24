@@ -516,7 +516,7 @@
 
   function buildWall(parent, lv, w, wallMat, i) {
     const f = App.wallFrame(w), T = w.t, Hh = App.wallHeight(lv, w) - App.wallUnderSlab(i, w);
-    const e0 = App.wallEndConnected(lv, w, 0) ? T / 2 : 0, e1 = App.wallEndConnected(lv, w, 1) ? T / 2 : 0;
+    const e0 = App.wallEndExt(lv, w, 0), e1 = App.wallEndExt(lv, w, 1);
     const g = new THREE.Group();
     g.position.set(w.x1, 0, w.y1);
     g.rotation.y = -Math.atan2(f.uy, f.ux);

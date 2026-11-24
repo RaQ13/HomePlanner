@@ -379,9 +379,23 @@ window.App = window.App || {};
     const x = end ? w.x2 : w.x1, y = end ? w.y2 : w.y1;
     return lv.walls.some(o => o !== w && (near(o.x1, o.y1, x, y, 1) || near(o.x2, o.y2, x, y, 1)));
   };
+  // O ile przedłużyć koniec ściany, żeby narożnik się domknął: o połowę grubości ściany dochodzącej pod kątem
+  // (nie własnej) – grubsza ściana nie wystaje wtedy poza lico cieńszej, a cieńsza dochodzi do lica grubszej.
+  // Przy kilku ścianach w węźle – najgrubsza z nich; ściana na przedłużeniu (ta sama oś) nie wymaga przedłużenia.
+  App.wallEndExt = (lv, w, end) => {
+    const x = end ? w.x2 : w.x1, y = end ? w.y2 : w.y1, f = App.wallFrame(w);
+    let ext = 0;
+    lv.walls.forEach(o => {
+      if (o === w || !(near(o.x1, o.y1, x, y, 1) || near(o.x2, o.y2, x, y, 1))) return;
+      const g = App.wallFrame(o), sin = Math.abs(f.ux * g.uy - f.uy * g.ux);
+      if (sin < 0.1) return;
+      ext = Math.max(ext, Math.min(o.t / 2 / sin, o.t * 2));
+    });
+    return ext;
+  };
   App.wallPolygon = (lv, w) => {
     const f = App.wallFrame(w), h = w.t / 2;
-    const e0 = App.wallEndConnected(lv, w, 0) ? h : 0, e1 = App.wallEndConnected(lv, w, 1) ? h : 0;
+    const e0 = App.wallEndExt(lv, w, 0), e1 = App.wallEndExt(lv, w, 1);
     const ax = w.x1 - f.ux * e0, ay = w.y1 - f.uy * e0, bx = w.x2 + f.ux * e1, by = w.y2 + f.uy * e1;
     return [
       { x: ax + f.nx * h, y: ay + f.ny * h }, { x: bx + f.nx * h, y: by + f.ny * h },
