@@ -253,6 +253,41 @@
   }
   const defSet = (obj, key) => (v) => { obj[key] = v; App.saveDefaults(); E.render(); };
 
+  // ---------- Lista otworów ----------
+  const cmTxt = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+  // Ściana opisana pokojami po obu stronach (albo „zewnątrz”) i długością.
+  function wallLabel(lv, w) {
+    const f = App.wallFrame(w), m = { x: (w.x1 + w.x2) / 2, y: (w.y1 + w.y2) / 2 }, off = w.t / 2 + 5;
+    const names = [-1, 1].map(sd => App.roomAt(lv, { x: m.x + f.nx * sd * off, y: m.y + f.ny * sd * off })).map(r => (r ? r.name : 'zewnątrz'));
+    return `ściana ${names[0]} / ${names[1]} (${cmTxt(f.L / 100)} m)`;
+  }
+  function openingText(lv, o) {
+    const w = lv.walls.find(x => x.id === o.wallId);
+    const kind = o.kind === 'window' ? 'Okno' : o.empty ? (o.depth ? 'Wnęka' : 'Otwór') : o.gate ? 'Brama' : 'Drzwi';
+    const sill = App.openingSill(o);
+    const extra = [o.poly ? `kształt ${o.poly.length}-kątny` : '', o.depth ? `gł. ${cmTxt(o.depth)}` : '', sill ? `dół ${cmTxt(sill)}` : '',
+      w ? `oś ${cmTxt(App.openingPos(w, o))} od pocz.` : ''].filter(Boolean).join(', ');
+    return { title: `${kind} ${cmTxt(o.width)} × ${cmTxt(o.height)} cm`, sub: extra };
+  }
+  function holeText(lv, a) {
+    const xs = a.pts.map(q => q.x), ys = a.pts.map(q => q.y), c = G.centroid(a.pts), r = App.roomAt(lv, c);
+    return { title: `${a.depth > 0 ? 'Wnęka w podłodze' : 'Otwór w stropie'} ${cmTxt(Math.max(...xs) - Math.min(...xs))} × ${cmTxt(Math.max(...ys) - Math.min(...ys))} cm`,
+      sub: [a.pts.length !== 4 ? `${a.pts.length} narożn.` : '', a.depth > 0 ? `gł. ${cmTxt(a.depth)}` : '', r ? r.name : 'poza pokojami',
+        `środek ${cmTxt(Math.round(c.x))}; ${cmTxt(Math.round(c.y))}`].filter(Boolean).join(', ') };
+  }
+  // Lista elementów: kliknięcie – zaznaczenie (właściwości, podświetlenie w 2D i 3D), przycisk – usunięcie.
+  function itemList(title, items, empty) {
+    const box = h('div', { className: 'olist' }, h('h4', {}, title));
+    if (!items.length) { box.append(h('p', { className: 'muted small' }, empty)); return box; }
+    items.forEach(it => {
+      const row = h('div', { className: 'olist-row' + (App.selection === it.id ? ' sel' : ''), title: 'Kliknij, aby zaznaczyć i edytować', onclick: () => App.select(it.id) },
+        h('div', { className: 'olist-txt' }, h('b', {}, it.title), it.sub ? h('span', {}, it.sub) : null),
+        h('button', { className: 'danger small', title: 'Usuń', onclick: (e) => { e.stopPropagation(); App.edit(() => App.removeById(it.id)); if (App.selection === it.id) App.select(null); else renderProps(); } }, '✕'));
+      box.append(row);
+    });
+    return box;
+  }
+
   function selectionForm(sel) {
     const lv = App.level(), o = sel.obj;
     // Kopiuj / Wklej / Usuń – wspólne dla wszystkich elementów.
@@ -261,16 +296,21 @@
       E.clipboard ? h('button', { title: 'Wklej (Ctrl+V) – pod kursorem na rzucie albo obok oryginału', onclick: () => E.paste() }, 'Wklej') : null,
       h('button', { title: o.hidden ? 'Pokaż element w modelu (H)' : 'Ukryj element – zostaje w projekcie, ale znika z modelu 3D (H)', onclick: toggleHidden }, o.hidden ? 'Pokaż' : 'Ukryj'),
       h('button', { className: 'danger', onclick: deleteSelection }, 'Usuń'),
+      // Z listy narzędzia „Utwórz otwór” – powrót do niej.
+      E.tool === 'hole' ? h('button', { title: 'Odznacz i wróć do listy otworów', onclick: () => App.select(null) }, '← Lista otworów') : null,
     ].filter(Boolean);
     if (sel.kind === 'wall') {
       const f = App.wallFrame(o);
-      return form('Ściana', [
+      const fm = form('Ściana', [
         { key: 'len', label: 'Długość', unit: 'cm', min: 1, get: () => Math.round(f.L * 10) / 10, set: editSet(v => setWallLength(lv, o, v)) },
         { key: 't', label: 'Grubość', unit: 'cm', min: 5, max: 100, get: () => o.t, set: editSet(v => { o.t = v; }) },
         { key: 'h', label: 'Wysokość', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: String(lv.height), get: () => o.h || '', set: editSet(v => { o.h = v || 0; }) },
         { label: 'Otwory', type: 'info', get: () => String(lv.openings.filter(x => x.wallId === o.id).length) },
         ...texFields(o, 'tex', 'Tekstura ściany'),
       ], [del]);
+      const ops = lv.openings.filter(x => x.wallId === o.id).sort((a, b) => App.openingPos(o, a) - App.openingPos(o, b));
+      fm.append(itemList('Otwory w tej ścianie', ops.map(x => Object.assign({ id: x.id }, openingText(lv, x))), 'Brak otworów.'));
+      return fm;
     }
     if (sel.kind === 'room') {
       return form('Pokój', [
@@ -819,7 +859,19 @@
         { label: 'Wskazówka', type: 'info', get: () => (wall ? 'Kliknij ścianę w miejscu otworu' : dh.mode === 'rect' ? 'Kliknij środek otworu' : 'Klikaj narożniki, Enter lub pierwszy punkt zamyka')
           + '. Te same ustawienia ma wycinanie w spacerze (X). Mniejsza głębokość niż ściana / strop – wnęka.' },
       );
-      return form('Utwórz otwór', spec);
+      const fm = form('Utwórz otwór', spec);
+      // Otwory utworzone na bieżącej kondygnacji: w ścianach (pogrupowane po ścianach) i w stropie.
+      const lv = App.level(), all = dh.list === 'all';
+      fm.append(h('div', { className: 'row' }, h('label', {}, 'Lista otworów'),
+        (() => { const sel = h('select', { onchange: (e) => { dh.list = e.target.value; App.saveDefaults(); renderProps(); } },
+          [['made', 'utworzone (bez drzwi i okien)'], ['all', 'wszystkie, z drzwiami i oknami']].map(([v, t]) => { const op = h('option', { value: v }, t); if ((dh.list || 'made') === v) op.selected = true; return op; }));
+          return sel; })()));
+      const walls = lv.walls.map(w => ({ w, ops: lv.openings.filter(o => o.wallId === w.id && (all || o.empty)) })).filter(x => x.ops.length);
+      if (!walls.length) fm.append(itemList('Otwory w ścianach', [], 'Brak otworów w ścianach na tej kondygnacji.'));
+      walls.forEach(({ w, ops }) => fm.append(itemList(wallLabel(lv, w), ops.sort((a, b) => App.openingPos(w, a) - App.openingPos(w, b)).map(o => Object.assign({ id: o.id }, openingText(lv, o))))));
+      const holes = (lv.areas || []).filter(a => a.surf === 'hole');
+      fm.append(itemList('Otwory w stropie (podłoga tej kondygnacji)', holes.map(a => Object.assign({ id: a.id }, holeText(lv, a))), 'Brak otworów w stropie.'));
+      return fm;
     }
     if (t === 'plot') return form('Nowa działka', [
       { key: 'dc', label: 'Kolor terenu', type: 'color', get: () => d.plot.color, set: defSet(d.plot, 'color') },

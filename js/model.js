@@ -27,7 +27,7 @@ window.App = window.App || {};
     area: { surf: 'floor' },
     // Utwórz otwór: w stropie (obrys rysowany albo prostokąt len × wid) lub w ścianie (width × height, dół sill);
     // depth – głębokość (0 – na wylot; mniej – wnęka w ścianie albo w podłodze).
-    hole: { target: 'floor', mode: 'draw', len: 100, wid: 100, width: 90, height: 200, sill: 0, depth: 0 },
+    hole: { target: 'floor', mode: 'draw', len: 100, wid: 100, width: 90, height: 200, sill: 0, depth: 0, list: 'made' },
     install: { type: 'socket' },
     roof: { type: 'gable', pitch: 35, overhang: 50, raise: 0, color: '#8f3b2c' },
   };
