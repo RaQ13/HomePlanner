@@ -59,7 +59,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 - Pod niskim spocznikiem albo skosem ludzik się schyla. Zatrzymuje się dopiero, gdy wolnej wysokości jest mniej niż 1,2 m. Przez otwór w stropie nad schodami do piwnicy można zejść na schody.
 - Na rzucie widać ludzika i jego pole widzenia. Na czas spaceru drzwi są otwarte i widać cały dom.
 - **Tryb ducha** – klawisz **G** albo przycisk **Duch**: przechodzenie przez ściany i stropy, **spacja** – w górę, **C** – w dół. Ponowne **G** kończy tryb ducha i ludzik ląduje na najbliższej podłodze pod sobą.
-- **Wycinanie otworów** – klawisz **X** albo przycisk **Wytnij otwór**: kliknięcie w ścianę wycina przejście 90 × 200 cm (kliknięcie wysoko – otwór 100 × 100 cm na tej wysokości), w podłogę lub sufit – otwór 100 × 100 cm w tym stropie. Nowy otwór jest zaznaczony, wymiary i położenie poprawia się we właściwościach.
+- **Utwórz otwór** – klawisz **X** albo przycisk **Utwórz otwór**: klikaj narożniki otworu na ścianie, podłodze albo suficie (punkty leżą na tej samej powierzchni, widać czerwony podgląd). 2 punkty – prostokąt po przekątnej, 3 i więcej – własny kształt; Enter albo kliknięcie pierwszego (zielonego) punktu wycina, Backspace cofa punkt, Esc zaczyna od nowa. Jeden punkt + Enter – otwór o wymiarach i głębokości ustawionych w narzędziu „Utwórz otwór” (X na rzucie). Wnęka w ścianie otwiera się w stronę, z której patrzysz. Nowy otwór jest zaznaczony – wymiary i położenie poprawia się we właściwościach.
 - **Esc** albo **Zakończ spacer** przywraca poprzedni widok.
 
 ## Narzędzia (klawisze)
@@ -72,7 +72,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 | Pokój dowolny | P | Pokój o dowolnym obrysie |
 | Drzwi / Okno | D / O | Otwór w ścianie; szerokość, wysokość, parapet i próg ustawiasz we Właściwościach; „Sam otwór (bez drzwi)” – przejście albo otwór na dowolnej wysokości, bez ościeżnicy i skrzydła |
 | Fragment podł./sufitu | B | Osobny kawałek podłogi albo sufitu (wielokąt): własny kolor, tekstura, podest nad podłogą, podłoga niżej (wnęka), obniżony sufit albo otwór w podłodze na wylot (np. szyb zejścia do piwnicy); zaznaczany w 2D i 3D |
-| Otwór w stropie | X | Otwór na wylot w podłodze bieżącej kondygnacji (strop nad kondygnacją niżej), np. szyb schodów albo antresola; otwory mogą na siebie nachodzić i dochodzić do ścian |
+| Utwórz otwór | X | Otwór w stropie (podłoga bieżącej kondygnacji – obrys z narożników albo prostokąt o zadanej długości i szerokości) albo w ścianie (kliknięcie w ścianę, zadana szerokość, wysokość i dół). Głębokość: puste – na wylot, mniej – wnęka. Po zaznaczeniu: długość, szerokość, głębokość i położenie (środek X/Y; w ścianie oś i dół) w Właściwościach. Otwory mogą na siebie nachodzić i dochodzić do ścian |
 | Schody | S | Schody proste, L i U z obliczaniem stopni; wysokość schodów (puste – do stropu); wysokość spocznika, w schodach U różne długości biegów (np. dłuższy 1. bieg nad pomieszczeniem); schody zaczynają się od podłogi, z której wchodzi się na 1. stopień (np. podest); poręcz (strona, pręt albo ścianka, wysokość, tekstura), skośny spód biegu, „Sufit skośny nad schodami” (prześwit nad stopniami), „Zabudowa pod schodami” |
 | Komin | K | Komin przechodzący przez kondygnacje i dach |
 | Okno dachowe | L | Okno w połaci dachu |

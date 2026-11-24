@@ -37,7 +37,7 @@
     chimney: 'Kliknij, aby postawić komin. T – obrót o 90°.',
     install: 'Wybierz element instalacji po prawej. Gniazdka, łączniki i podejścia – kliknij przy licu ściany (strona kursora wyznacza lico). Przewody i rury – klikaj kolejne punkty (przyciągają do osi ścian i punktów instalacji), Enter lub prawy klik – zakończ.',
     furniture: 'Wybierz mebel z katalogu po prawej i kliknij na rzucie. Przy ścianie mebel sam obraca się do niej tyłem (Shift – bez przyciągania). T – obrót o 90°, M – odbicie.',
-    hole: 'Klikaj narożniki otworu w podłodze (przez strop na wylot). Kliknij pierwszy punkt lub Enter, aby zamknąć. Wpisz długość boku w cm i Enter. Backspace – cofnij punkt.',
+    hole: 'Utwórz otwór: w stropie – klikaj narożniki (Enter / pierwszy punkt zamyka) albo, przy „prostokąt”, kliknij środek; w ścianie – kliknij ścianę. Wymiary i głębokość ustaw po lewej.',
     area: 'Klikaj narożniki fragmentu podłogi lub sufitu (rodzaj wybierz po lewej). Kliknij pierwszy punkt lub Enter, aby zamknąć. Wpisz długość boku w cm i Enter. Backspace – cofnij punkt.',
     plot: 'Klikaj narożniki działki. Kliknij pierwszy punkt lub Enter, aby zamknąć. Wpisz długość boku w cm i Enter. Backspace – cofnij punkt.',
     path: 'Pas: klikaj kolejne punkty osi chodnika (szerokość po prawej), Enter lub prawy klik – zakończ. Obszar: klikaj narożniki, zamknij pierwszym punktem lub Enterem.',
@@ -675,16 +675,16 @@
     }
     if (t === 'fence' && pts.length >= 2) obj = App.makeFence(pts, closed && pts.length >= 3);
     if (t === 'area' && area) obj = App.makeArea(pts, App.defaults.area.surf);
-    if (t === 'hole' && area) obj = App.makeArea(pts, 'hole');
+    if (t === 'hole' && area) { obj = App.makeArea(pts, 'hole'); if (App.defaults.hole.depth > 0) obj.depth = App.defaults.hole.depth; }
     if (!obj) return;
     App.edit(() => lv[obj.kind + 's'].push(obj));
     App.select(obj.id);
   }
-  tools.plot = tools.path = tools.fence = tools.area = tools.hole = tools.poly;
+  tools.plot = tools.path = tools.fence = tools.area = tools.poly;
   tools.garden = { down() { tools.furniture.down(); } };
 
-  function openingTarget(kind) {
-    const lv = App.level(), p = E.mouse, d = App.defaults[kind];
+  function openingTarget(kind, d = App.defaults[kind]) {
+    const lv = App.level(), p = E.mouse;
     let best = null, bd = Infinity;
     lv.walls.forEach(w => {
       const pr = G.project(p, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 });
@@ -695,7 +695,7 @@
     const width = kind === 'window' && d.gable ? d.width : Math.min(d.width, f.L);
     // Okno w szczycie może wychodzić poza swoją ścianę (np. na styk dwóch ścian pod kalenicą).
     const pos = kind === 'window' && d.gable ? Math.round(pr.t * f.L / 5) * 5 : G.clamp(Math.round(pr.t * f.L / 5) * 5, width / 2, f.L - width / 2);
-    const sill = kind !== 'window' ? 0 : d.gable ? App.wallHeight(lv, w) + 30 : d.sill, top = sill + d.height;
+    const sill = kind !== 'window' ? d.sill || 0 : d.gable ? App.wallHeight(lv, w) + 30 : d.sill, top = sill + d.height;
     // Otwory kolidują tylko wtedy, gdy nachodzą na siebie i w poziomie, i w pionie (okno szczytowe nad oknem garażu).
     const ok = !lv.openings.some(o => o.wallId === w.id && Math.abs(App.openingPos(w, o) - pos) < (o.width + width) / 2 - 0.5 &&
       App.openingSill(o) < top && sill < App.openingSill(o) + o.height);
@@ -715,6 +715,31 @@
       E.preview = openingTarget(kind);
     },
   });
+  // Utwórz otwór: w stropie – obrys rysowany albo prostokąt kliknięciem; w ścianie – kliknięcie w ścianę.
+  tools.hole = {
+    move() { E.preview = App.defaults.hole.target === 'wall' ? openingTarget('door', App.defaults.hole) : null; },
+    down() {
+      const d = App.defaults.hole, lv = App.level();
+      if (d.target === 'wall') {
+        const t = openingTarget('door', d);
+        if (!t || !t.ok) return;
+        const o = { id: App.uid(), kind: 'door', empty: true, wallId: t.wall.id, pos: t.pos, width: t.width, height: d.height, sill: d.sill || 0, flip: false, side: t.side };
+        if (d.depth > 0) o.depth = d.depth;
+        App.edit(() => lv.openings.push(o));
+        App.select(o.id);
+        return;
+      }
+      if (d.mode === 'rect') {
+        const c = { x: E.snap.x, y: E.snap.y }, hx = d.len / 2, hy = d.wid / 2;
+        const a = App.makeArea([{ x: c.x - hx, y: c.y - hy }, { x: c.x + hx, y: c.y - hy }, { x: c.x + hx, y: c.y + hy }, { x: c.x - hx, y: c.y + hy }], 'hole');
+        if (d.depth > 0) a.depth = d.depth;
+        App.edit(() => lv.areas.push(a));
+        App.select(a.id);
+        return;
+      }
+      tools.poly.down();
+    },
+  };
   tools.door = openingTool('door');
   tools.window = openingTool('window');
 
@@ -1660,6 +1685,20 @@
   function drawAreas(lv, tech) {
     lv.areas.forEach(o => {
       path(o.pts);
+      if (o.surf === 'hole' && o.depth > 0) {
+        // Wnęka (otwór niepełnej głębokości): jak podłoga obniżona.
+        ctx.fillStyle = '#e5e7eb';
+        ctx.fill();
+        const c = G.centroid(o.pts);
+        label(c.x, c.y, `wnęka −${fmtCm(o.depth)} cm`, { font: '10px system-ui, sans-serif', color: '#374151', bg: 'rgba(255,255,255,0.8)' });
+        path(o.pts);
+        ctx.strokeStyle = '#374151';
+        ctx.lineWidth = px(1.2);
+        ctx.setLineDash([px(3), px(2)]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        return;
+      }
       if (o.surf === 'hole') {
         // Otwór na wylot: białe pole przekreślone po przekątnych (jak otwór w stropie na rysunku).
         ctx.fillStyle = '#ffffff';
@@ -1907,6 +1946,10 @@
       const last = E.poly[E.poly.length - 1];
       const len = E.typed ? E.typed + ' cm' : Math.round(G.dist(last, s)) + ' cm';
       label((last.x + s.x) / 2, (last.y + s.y) / 2, len, { bg: 'rgba(255,255,255,0.9)', color: SEL });
+    }
+    if (t === 'hole' && E.preview) {
+      const pv = E.preview;
+      drawOpening(App.level(), { kind: 'door', empty: true, wallId: pv.wall.id, pos: pv.pos, width: pv.width, height: App.defaults.hole.height, sill: pv.sill, ok: pv.ok }, true);
     }
     if ((t === 'door' || t === 'window') && E.preview) {
       const pv = E.preview;

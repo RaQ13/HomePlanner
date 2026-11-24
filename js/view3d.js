@@ -434,7 +434,7 @@
       });
       // Fragmenty podłogi (warstwa / podest na podłodze) i sufitu (pod stropem, ewentualnie obniżone).
       if (!only) lv.areas.forEach(o => {
-        if (o.pts.length < 3 || o.surf === 'hole') return;
+        if (o.pts.length < 3 || (o.surf === 'hole' && !(o.depth > 0))) return;
         // Sufit nad pokojem nie zasłania widoku z góry, gdy kondygnacja wyżej jest ukryta.
         if (o.surf === 'ceil' && i === last && i < n - 1) return;
         const c = G.centroid(o.pts), thick = Math.max(0.5, o.thick || 1), lift = Math.max(0, o.lift || 0);
@@ -444,7 +444,7 @@
           const room = App.roomAt(lv, c), fl = (i === 0 ? 1 : 0.5) - (room ? App.roomDrop(room, i) : 0);
           // Wnęka: dno – płyta grubości stropu pokoju na głębokości drop (od spodu obniża sufit niżej),
           // ścianki boczne od podłogi pokoju do dna.
-          const slab = room ? App.roomFloor(i, room).thick : 22, drop = room ? Math.max(0, o.drop || 0) : 0;
+          const slab = room ? App.roomFloor(i, room).thick : 22, drop = room ? Math.max(0, (o.surf === 'hole' ? o.depth : o.drop) || 0) : 0;
           if (drop > 0) { top = fl - drop; depth = Math.min(slab, 22); pit = { top: fl, h: drop }; }
           else { top = fl + lift + thick; depth = lift + thick - 0.1; }
         }
@@ -530,6 +530,21 @@
     });
   }
 
+  // Otwór w układzie ściany (x – wzdłuż, y – w górę): prostokąt albo własny kształt (o.poly – narożniki
+  // w ułamkach prostokąta otworu, u od lewej krawędzi, v od dołu).
+  function opHole(op) {
+    const { a, b, bottom, top } = op;
+    if (op.o.poly && op.o.poly.length >= 3) return op.o.poly.map(q => ({ x: a + q.u * (b - a), y: bottom + q.v * (top - bottom) }));
+    return [{ x: a, y: bottom }, { x: b, y: bottom }, { x: b, y: top }, { x: a, y: top }];
+  }
+  // Ściana z obrysu minus otwory – wypukłe kawałki wyciągnięte na grubość T.
+  function wallPieces(g, wallMat, outline, holes, T) {
+    slabPieces(outline, holes).forEach(pc => {
+      const geo = new THREE.ExtrudeGeometry(new THREE.Shape(pc.map(q => new THREE.Vector2(q.x, q.y))), { depth: T, bevelEnabled: false });
+      geo.translate(0, 0, -T / 2);
+      mesh(geo, wallMat, g);
+    });
+  }
   function buildWall(parent, lv, w, wallMat, i) {
     const f = App.wallFrame(w), T = w.t, Hh = App.wallHeight(lv, w) - App.wallUnderSlab(i, w);
     const e0 = App.wallEndExt(lv, w, 0), e1 = App.wallEndExt(lv, w, 1);
@@ -560,6 +575,14 @@
     // Każdy otwór we własnej podgrupie, żeby dało się go zaznaczyć w 3D.
     const frame = (op) => {
       if (op.foreign) return;
+      // Wnęka (sam otwór o głębokości mniejszej niż ściana): z drugiej strony zostaje ściana grubości T − depth.
+      const dep = op.o.empty ? op.o.depth || 0 : 0;
+      if (dep > 0 && dep < T - 0.5) {
+        const sd = op.o.side ? 1 : -1, back = T - dep, zc = -sd * dep / 2;
+        const geo = new THREE.ExtrudeGeometry(new THREE.Shape(opHole(op).map(q => new THREE.Vector2(q.x, q.y))), { depth: back, bevelEnabled: false });
+        geo.translate(0, 0, zc - back / 2);
+        mesh(geo, wallMat, g);
+      }
       const sg = new THREE.Group();
       sg.userData.pick = { id: op.o.id };
       g.add(sg);
@@ -584,24 +607,31 @@
         return prof[prof.length - 1][1];
       };
       const minTop = (a, b) => Math.min(topAt(a), topAt(b), ...prof.filter(q => q[0] > a && q[0] < b).map(q => q[1]));
-      const shape = new THREE.Shape();
-      shape.moveTo(prof[0][0], foot);
-      shape.lineTo(prof[prof.length - 1][0], foot);
-      for (let k = prof.length - 1; k >= 0; k--) if (prof[k][1] > 0.5) shape.lineTo(prof[k][0], prof[k][1]);
-      shape.closePath();
+      const outline = [{ x: prof[0][0], y: foot }, { x: prof[prof.length - 1][0], y: foot }];
+      for (let k = prof.length - 1; k >= 0; k--) if (prof[k][1] > 0.5) outline.push({ x: prof[k][0], y: prof[k][1] });
+      const holes = [];
       ops.forEach(op => {
         op.top = Math.min(op.top, minTop(op.a, op.b) - 5);
         if (op.top - op.bottom < 10) return;
-        const hole = new THREE.Path();
-        // Otwór nie może dotykać krawędzi obrysu (okno z kondygnacji niżej zaczyna się przy podłodze).
-        const y0 = Math.max(op.bottom, foot + 0.5), a0 = Math.max(op.a, prof[0][0] + 0.5), b0 = Math.min(op.b, prof[prof.length - 1][0] - 0.5);
-        hole.moveTo(a0, y0); hole.lineTo(b0, y0); hole.lineTo(b0, op.top); hole.lineTo(a0, op.top); hole.closePath();
-        shape.holes.push(hole);
+        holes.push(opHole(op));
         frame(op);
       });
-      const geo = new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: false });
-      geo.translate(0, 0, -T / 2);
-      mesh(geo, wallMat, g);
+      wallPieces(g, wallMat, outline, holes, T);
+      return;
+    }
+    // Otwór o własnym kształcie: ściana jako obrys (z cokołem w pasach) minus otwory, w kawałkach.
+    if (ops.some(op => op.o.poly)) {
+      const x0 = -e0, x1 = f.L + e1;
+      const xs = [...new Set([x0, x1, ...App.wallFloorBreaks(lv, i, w)])].filter(x => x >= x0 && x <= x1).sort((a, b) => a - b);
+      const outline = [];
+      for (let k = 0; k + 1 < xs.length; k++) {
+        const ft = floorAt((xs[k] + xs[k + 1]) / 2).foot;
+        outline.push({ x: xs[k], y: ft }, { x: xs[k + 1], y: ft });
+      }
+      outline.push({ x: x1, y: Hh }, { x: x0, y: Hh });
+      const clean = outline.filter((q, k) => { const p = outline[(k + outline.length - 1) % outline.length]; return Math.hypot(q.x - p.x, q.y - p.y) > 0.01; });
+      wallPieces(g, wallMat, clean, ops.map(op => opHole(Object.assign({}, op, { top: Math.min(op.top, Hh) }))), T);
+      ops.forEach(frame);
       return;
     }
 
@@ -1675,44 +1705,131 @@
     App.emit('walk', true);
   };
   V.walkGhostOn = () => !!(W.on && W.ghost);
-  // Wycinanie otworów ze spaceru: kliknięcie w ścianę – przejście (albo otwór na wysokości kliknięcia),
-  // w podłogę lub sufit – otwór 100 × 100 cm w tej płycie. Nowy element jest zaznaczany do dalszej edycji.
+  // Wycinanie otworów ze spaceru: punkty klikane na jednej powierzchni (ściana, podłoga albo sufit).
+  // 1 punkt + Enter – otwór domyślny (ściana: przejście 90 × 200 albo 100 × 100 na wysokości kliknięcia;
+  // strop: 100 × 100), 2 punkty – prostokąt po przekątnej, 3 i więcej – własny kształt. Enter albo kliknięcie
+  // pierwszego punktu kończy, Backspace cofa punkt, Esc przerywa. Nowy element jest zaznaczany do edycji.
   V.walkCut = (on) => {
     if (!W.on) return;
     W.cut = on == null ? !W.cut : !!on;
+    cutReset();
     if (renderer) renderer.domElement.style.cursor = W.cut ? 'crosshair' : '';
     App.emit('walk', true);
   };
   V.walkCutOn = () => !!(W.on && W.cut);
-  function cutAt(e) {
+  V.walkCutPoints = () => (W.cutPts ? W.cutPts.length : 0);
+  let cutLine = null;
+  function cutReset() {
+    W.cutPts = [];
+    W.cutSurf = null;
+    W.cutHover = null;
+    cutDraw();
+  }
+  function cutRay(e) {
     const el = renderer.domElement, r = el.getBoundingClientRect(), ray = caster();
     ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+    return ray;
+  }
+  // Powierzchnia pod kursorem: ściana (z płaszczyzną jej lica) albo płyta stropu (pozioma płaszczyzna).
+  function cutSurfaceAt(ray) {
     const h = ray.intersectObjects(root.children, true).find(x => x.object.isMesh && x.object.visible && !x.object.userData.noPick);
-    if (!h) return;
+    if (!h) return null;
     const pk = pickOf(h.object);
-    if (!pk || pk.level == null) return;
-    const p = App.project, lv = p.levels[pk.level], f = lv && App.find(pk.id, lv);
-    if (!f) return;
-    const pt = { x: h.point.x * 100, y: h.point.z * 100 }, ny = upNormal(h);
+    if (!pk || pk.level == null) return null;
+    const lv = App.project.levels[pk.level], f = lv && App.find(pk.id, lv), ny = upNormal(h);
+    if (!f) return null;
+    const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+    if (f.kind === 'wall' && Math.abs(ny) < 0.5) return { type: 'wall', level: pk.level, wall: f.obj, normal: n, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(n, h.point), point: h.point.clone() };
+    if (f.kind === 'room' && Math.abs(ny) > 0.5) return { type: 'slab', level: pk.level, normal: n, plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -h.point.y), point: h.point.clone() };
+    return null;
+  }
+  function cutPointAt(ray) {
+    if (!W.cutSurf) { const sf = cutSurfaceAt(ray); return sf ? sf.point : null; }
+    const p = new THREE.Vector3();
+    return ray.ray.intersectPlane(W.cutSurf.plane, p) ? p : null;
+  }
+  // Podgląd: linia przez punkty (do kursora), lekko odsunięta od powierzchni w stronę patrzącego.
+  function cutDraw() {
+    if (!scene) return;
+    if (cutLine) { scene.remove(cutLine); cutLine.traverse(o => { if (o.geometry) o.geometry.dispose(); }); cutLine = null; }
+    const pts = (W.cutPts || []).concat(W.cutHover ? [W.cutHover] : []);
+    if (!W.cut || !pts.length) return;
+    const off = W.cutSurf ? W.cutSurf.plane.normal.clone().multiplyScalar(0.01) : new THREE.Vector3();
+    cutLine = new THREE.Group();
+    const lm = new THREE.LineBasicMaterial({ color: '#dc2626', depthTest: false });
+    const show = pts.map(p => p.clone().add(off));
+    if (show.length >= 2) cutLine.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(W.cutPts.length >= 2 ? show.concat([show[0]]) : show), lm));
+    (W.cutPts || []).forEach((p, k) => {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(k ? 0.03 : 0.045, 10, 8), new THREE.MeshBasicMaterial({ color: k ? '#dc2626' : '#16a34a', depthTest: false }));
+      m.position.copy(p).add(off);
+      cutLine.add(m);
+    });
+    cutLine.renderOrder = 20;
+    cutLine.traverse(o => { o.renderOrder = 20; });
+    scene.add(cutLine);
+  }
+  function cutClick(e) {
+    const ray = cutRay(e);
+    if (!W.cutPts.length) {
+      const sf = cutSurfaceAt(ray);
+      if (!sf) return;
+      W.cutSurf = sf;
+      W.cutPts.push(sf.point);
+    } else {
+      const p = cutPointAt(ray);
+      if (!p) return;
+      // Kliknięcie przy pierwszym punkcie zamyka kształt.
+      const scr = (v) => { const q = v.clone().project(camera); return new THREE.Vector2(q.x * renderer.domElement.clientWidth / 2, q.y * renderer.domElement.clientHeight / 2); };
+      if (W.cutPts.length >= 3 && scr(p).distanceTo(scr(W.cutPts[0])) < 12) return cutFinish();
+      W.cutPts.push(p);
+    }
+    cutDraw();
+    App.emit('walk', true);
+  }
+  function cutMove(e) {
+    if (!W.cutPts.length) { if (W.cutHover) { W.cutHover = null; cutDraw(); } return; }
+    W.cutHover = cutPointAt(cutRay(e));
+    cutDraw();
+  }
+  function cutFinish() {
+    const sf = W.cutSurf, P = W.cutPts;
+    if (!sf || !P.length) return cutReset();
+    const p = App.project, lv = p.levels[sf.level];
     let created = null;
-    if (f.kind === 'wall' && Math.abs(ny) < 0.5) {
-      const w = f.obj, fr = App.wallFrame(w), pr = G.project(pt, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 });
-      const t = pr.t * fr.L, z = h.point.y * 100 - App.elevation(pk.level) - App.wallFloorAt(lv, pk.level, w, t).base;
-      // Kliknięcie nisko – przejście od podłogi; wysoko – otwór 100 × 100 na wysokości kliknięcia.
-      const high = z > 170, width = Math.min(high ? 100 : 90, fr.L), height = high ? 100 : 200, sill = high ? Math.max(0, Math.round(z - 50)) : 0;
-      const pos = G.clamp(Math.round(t), width / 2, fr.L - width / 2);
+    if (sf.type === 'wall') {
+      const w = sf.wall, fr = App.wallFrame(w);
+      const loc = P.map(v => { const q = { x: v.x * 100, y: v.z * 100 }, t = (q.x - w.x1) * fr.ux + (q.y - w.y1) * fr.uy;
+        return { s: t, z: v.y * 100 - App.elevation(sf.level) - App.wallFloorAt(lv, sf.level, w, G.clamp(t, 0, fr.L)).base }; });
+      let s0, s1, z0, z1, poly = null;
+      if (loc.length === 1) {
+        // Kliknięcie nisko – przejście od podłogi; wysoko – otwór 100 × 100 na wysokości kliknięcia.
+        // Wymiary z ustawień narzędzia „Utwórz otwór”: kliknięcie nisko – od ustawionego dołu, wysoko – na wysokości kliknięcia.
+        const d = App.defaults.hole, width = Math.min(d.width, fr.L), height = d.height, high = loc[0].z > d.sill + height;
+        s0 = loc[0].s - width / 2; s1 = s0 + width; z0 = high ? Math.max(0, loc[0].z - height / 2) : d.sill; z1 = z0 + height;
+      } else {
+        s0 = Math.min(...loc.map(q => q.s)); s1 = Math.max(...loc.map(q => q.s));
+        z0 = Math.min(...loc.map(q => q.z)); z1 = Math.max(...loc.map(q => q.z));
+        if (loc.length >= 3) poly = loc.map(q => ({ u: +((q.s - s0) / (s1 - s0 || 1)).toFixed(4), v: +((q.z - z0) / (z1 - z0 || 1)).toFixed(4) }));
+      }
+      if (s1 - s0 < 5 || z1 - z0 < 5) return cutReset();
+      const width = Math.round(s1 - s0), height = Math.round(z1 - z0), sill = Math.round(z0), pos = Math.round((s0 + s1) / 2);
       const clash = lv.openings.some(o => o.wallId === w.id && Math.abs(App.openingPos(w, o) - pos) < (o.width + width) / 2 - 0.5 &&
         App.openingSill(o) < sill + height && sill < App.openingSill(o) + o.height);
-      if (clash) { const el3 = document.getElementById('hint3d'); if (el3) el3.textContent = 'Tu jest już okno albo drzwi – kliknij obok (X – koniec wycinania)'; return; }
-      created = { list: 'openings', obj: { id: App.uid(), kind: 'door', empty: true, wallId: w.id, pos, width, height, sill, flip: false, side: false } };
-    } else if (f.kind === 'room' && Math.abs(ny) > 0.5) {
-      const s = 50, c = { x: Math.round(pt.x), y: Math.round(pt.y) };
-      const a = App.makeArea([{ x: c.x - s, y: c.y - s }, { x: c.x + s, y: c.y - s }, { x: c.x + s, y: c.y + s }, { x: c.x - s, y: c.y + s }], 'hole');
-      created = { list: 'areas', obj: a };
+      if (clash) { const el3 = document.getElementById('hint3d'); if (el3) el3.textContent = 'Otwór nachodzi na okno albo drzwi – wyznacz go obok (Esc – od nowa)'; return cutReset(); }
+      // Wnęka otwiera się na stronę, z której patrzymy.
+      const side = sf.normal.x * fr.nx + sf.normal.z * fr.ny > 0, depth = App.defaults.hole.depth || 0;
+      created = { list: 'openings', obj: Object.assign({ id: App.uid(), kind: 'door', empty: true, wallId: w.id, pos, width, height, sill, flip: false, side }, poly ? { poly } : {}, depth > 0 ? { depth } : {}) };
+    } else {
+      let pts = P.map(v => ({ x: Math.round(v.x * 100), y: Math.round(v.z * 100) }));
+      if (pts.length === 1) { const c = pts[0], d = App.defaults.hole, hx = d.len / 2, hy = d.wid / 2; pts = [{ x: c.x - hx, y: c.y - hy }, { x: c.x + hx, y: c.y - hy }, { x: c.x + hx, y: c.y + hy }, { x: c.x - hx, y: c.y + hy }]; }
+      else if (pts.length === 2) { const [a, b] = pts; pts = [{ x: a.x, y: a.y }, { x: b.x, y: a.y }, { x: b.x, y: b.y }, { x: a.x, y: b.y }]; }
+      if (Math.abs(G.area(pts)) < 25) return cutReset();
+      created = { list: 'areas', obj: App.makeArea(pts, 'hole') };
+      if (App.defaults.hole.depth > 0 && sf.type === 'slab' && sf.normal.y > 0) created.obj.depth = App.defaults.hole.depth;
     }
-    if (!created) return;
+    cutReset();
     App.edit(() => { lv[created.list] = lv[created.list] || []; lv[created.list].push(created.obj); });
-    if (pk.level !== p.current) { p.current = pk.level; App.emit('change'); }
+    if (sf.level !== p.current) { p.current = sf.level; App.emit('change'); }
     App.select(created.obj.id);
   }
   // Kondygnacja w trybie ducha – z wysokości oczu nad rzędnymi kondygnacji.
@@ -1852,6 +1969,7 @@
     W.on = false;
     W.cut = false;
     if (renderer) renderer.domElement.style.cursor = '';
+    cutReset();
     W.ghost = false;
     W.keys.clear();
     const s = W.saved;
@@ -1877,8 +1995,9 @@
     });
     // Tryb wycinania: kliknięcie bez przeciągania wycina otwór.
     el.addEventListener('pointerup', (e) => {
-      if (W.on && W.cut && look && e.button === 0 && Math.hypot(e.clientX - look.x, e.clientY - look.y) < 5) cutAt(e);
+      if (W.on && W.cut && look && e.button === 0 && Math.hypot(e.clientX - look.x, e.clientY - look.y) < 5) cutClick(e);
     });
+    el.addEventListener('pointermove', (e) => { if (W.on && W.cut && !e.buttons) cutMove(e); });
     el.addEventListener('pointermove', (e) => {
       if (!W.on || !look || !e.buttons) return;
       // Jak w Street View: przeciąganie „chwyta” obraz.
@@ -1895,7 +2014,7 @@
       camera.updateProjectionMatrix();
     }, { passive: false });
     el.addEventListener('dblclick', (e) => {
-      if (!W.on) return;
+      if (!W.on || W.cut) return;
       const r = el.getBoundingClientRect(), ray = caster();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
       const h = ray.intersectObjects([root, terrain], true).find(x => x.object.isMesh && x.object.visible && !(x.object === terrain && App.undergroundAt({ x: x.point.x * 100, y: x.point.z * 100 })));
@@ -1909,7 +2028,13 @@
       if (!W.on || !V.visible || e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
-      if (e.key === 'Escape') { V.walkStop(); }
+      if (W.cut && W.cutPts && W.cutPts.length && (e.key === 'Escape' || e.key === 'Enter' || e.key === 'Backspace')) {
+        if (e.key === 'Enter') cutFinish();
+        else if (e.key === 'Backspace') { W.cutPts.pop(); if (!W.cutPts.length) cutReset(); else cutDraw(); }
+        else cutReset();
+        App.emit('walk', true);
+      }
+      else if (e.key === 'Escape') { V.walkStop(); }
       else if (e.code === 'KeyG') { if (!e.repeat) V.walkGhost(); }
       else if (e.code === 'KeyX') { if (!e.repeat) V.walkCut(); }
       else if (MOVE.has(e.code)) W.keys.add(e.code);

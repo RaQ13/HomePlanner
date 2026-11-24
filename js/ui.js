@@ -33,7 +33,7 @@
     { id: 'furniture', name: 'Meble', key: 'E', icon: svg('<path d="M4 11V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"/><path d="M3 11h18v5H3zM5 16v3M19 16v3"/>') },
     { id: 'roof', name: 'Dach', key: 'A', icon: svg('<path d="M2 13l10-8 10 8"/><path d="M5 11v8h14v-8"/>') },
     { id: 'area', name: 'Fragment podł./sufitu', key: 'B', icon: svg('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M9 10h8v6H9z" fill="currentColor" fill-opacity=".3" stroke-dasharray="2 1.5"/>') },
-    { id: 'hole', name: 'Otwór w stropie', key: 'X', icon: svg('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M8 9h8v6H8z"/><path d="M8 9l8 6M16 9l-8 6"/>') },
+    { id: 'hole', name: 'Utwórz otwór', key: 'X', icon: svg('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M8 9h8v6H8z"/><path d="M8 9l8 6M16 9l-8 6"/>') },
     { id: 'plot', name: 'Działka', key: 'G', icon: svg('<path d="M3 7l8-4 10 5-3 12-14-2z" stroke-dasharray="4 2"/>') },
     { id: 'path', name: 'Nawierzchnia', key: 'N', icon: svg('<path d="M6 21l4-18M18 21l-4-18"/><path d="M12 5v2M12 11v2M12 17v2"/>') },
     { id: 'fence', name: 'Płot', key: 'Z', icon: svg('<path d="M5 21V7l2-3 2 3v14M15 21V7l2-3 2 3v14M3 10h18M3 16h18"/>') },
@@ -306,7 +306,13 @@
       spec.push({ key: 'pos', label: 'Oś od początku ściany', unit: 'cm', min: free ? -Math.floor(L) : 0, max: Math.floor(free ? 2 * L : L), get: () => Math.round(w ? App.openingPos(w, o) : o.pos), set: editSet(v => { o.pos = v; }) });
       if (o.kind === 'door') {
         spec.push({ key: 'sill', label: o.empty ? 'Dół otworu nad podłogą' : 'Próg nad podłogą (ujemny – niżej)', unit: 'cm', min: -400, max: 1000, get: () => o.sill || 0, set: editSet(v => { o.sill = v; }) });
-        spec.push({ key: 'empty', label: 'Sam otwór (bez drzwi)', type: 'checkbox', get: () => !!o.empty, set: editSet(v => { o.empty = v; if (v) o.gate = false; }) });
+        spec.push({ key: 'empty', label: 'Sam otwór (bez drzwi)', type: 'checkbox', get: () => !!o.empty, set: editSet(v => { o.empty = v; if (v) o.gate = false; else delete o.poly; }) });
+        if (o.empty) {
+          const T = w ? w.t : 0;
+          spec.push({ key: 'depth', label: `Głębokość (ściana ${T} cm)`, unit: 'cm', min: 0, max: 500, allowEmpty: true, placeholder: 'na wylot', get: () => o.depth || '', set: editSet(v => { if (v > 0 && v < T) o.depth = v; else delete o.depth; }) });
+          if (o.depth) spec.push({ key: 'side', label: 'Wnęka od drugiej strony', type: 'checkbox', get: () => !!o.side, set: editSet(v => { o.side = v; }) });
+        }
+        if (o.poly) spec.push({ key: 'poly', label: `Własny kształt (${o.poly.length} narożn.) – odznacz: prostokąt`, type: 'checkbox', get: () => true, set: editSet(v => { if (!v) delete o.poly; }) });
         if (!o.empty) {
           spec.push({ key: 'gate', label: 'Brama garażowa', type: 'checkbox', get: () => !!o.gate, set: editSet(v => { o.gate = v; }) });
           spec.push({ key: 'flip', label: 'Zawiasy po drugiej stronie', type: 'checkbox', get: () => o.flip, set: editSet(v => { o.flip = v; }) });
@@ -314,7 +320,7 @@
         }
       }
       if (!o.empty) spec.push(...texFields(o, 'tex', o.kind === 'window' ? 'Tekstura ramy' : 'Tekstura'));
-      return form(o.kind === 'window' ? 'Okno' : o.empty ? 'Otwór w ścianie' : o.gate ? 'Brama' : 'Drzwi', spec, [del]);
+      return form(o.kind === 'window' ? 'Okno' : o.empty ? (o.depth ? 'Wnęka w ścianie' : 'Otwór w ścianie') : o.gate ? 'Brama' : 'Drzwi', spec, [del]);
     }
     if (sel.kind === 'roof') {
       const p = App.project, tan = () => Math.tan(o.pitch * Math.PI / 180);
@@ -470,12 +476,23 @@
     if (sel.kind === 'area') {
       const ceil = o.surf === 'ceil', hole = o.surf === 'hole';
       const surf = { key: 'surf', label: 'Rodzaj', type: 'select', options: [['floor', 'podłoga'], ['ceil', 'sufit'], ['hole', 'otwór w podłodze (na wylot)']], get: () => o.surf || 'floor', set: editSet(v => { o.surf = v; }) };
-      if (hole) return form('Otwór w podłodze', [
-        { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name || '', set: editSet(v => { o.name = v; }) },
-        surf,
-        { label: 'Powierzchnia', type: 'info', get: () => App.fmtArea(o.pts) },
-        { label: 'Narożniki', type: 'info', get: () => String(o.pts.length) },
-      ], del);
+      if (hole) {
+        // Wymiary i położenie z prostokąta otaczającego – zmiana skaluje / przesuwa cały obrys.
+        const bb = () => { const xs = o.pts.map(q => q.x), ys = o.pts.map(q => q.y); return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; };
+        const scale = (ax, v) => { const b = bb(), c = ax === 'x' ? (b.x0 + b.x1) / 2 : (b.y0 + b.y1) / 2, L = ax === 'x' ? b.x1 - b.x0 : b.y1 - b.y0; if (L < 0.01) return; o.pts.forEach(q => { q[ax] = c + (q[ax] - c) * v / L; }); };
+        const move = (ax, v) => { const b = bb(), c = ax === 'x' ? (b.x0 + b.x1) / 2 : (b.y0 + b.y1) / 2; o.pts.forEach(q => { q[ax] += v - c; }); };
+        return form(o.depth > 0 ? 'Wnęka w podłodze' : 'Otwór w stropie', [
+          { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name || '', set: editSet(v => { o.name = v; }) },
+          surf,
+          { key: 'bl', label: 'Długość (oś X)', unit: 'cm', min: 1, max: 5000, get: () => Math.round(bb().x1 - bb().x0), set: editSet(v => scale('x', v)) },
+          { key: 'bw', label: 'Szerokość (oś Y)', unit: 'cm', min: 1, max: 5000, get: () => Math.round(bb().y1 - bb().y0), set: editSet(v => scale('y', v)) },
+          { key: 'bd', label: 'Głębokość', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: 'na wylot', get: () => o.depth || '', set: editSet(v => { if (v > 0) o.depth = v; else delete o.depth; }) },
+          { key: 'bx', label: 'Środek X', unit: 'cm', min: -100000, max: 100000, get: () => Math.round((bb().x0 + bb().x1) / 2), set: editSet(v => move('x', v)) },
+          { key: 'by', label: 'Środek Y', unit: 'cm', min: -100000, max: 100000, get: () => Math.round((bb().y0 + bb().y1) / 2), set: editSet(v => move('y', v)) },
+          { label: 'Powierzchnia', type: 'info', get: () => App.fmtArea(o.pts) },
+          { label: 'Narożniki', type: 'info', get: () => String(o.pts.length) },
+        ], del);
+      }
       return form(ceil ? 'Fragment sufitu' : 'Fragment podłogi', [
         { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name || '', set: editSet(v => { o.name = v; }) },
         surf,
@@ -780,9 +797,30 @@
       { key: 'ds', label: 'Rodzaj', type: 'select', options: [['floor', 'fragment podłogi'], ['ceil', 'fragment sufitu'], ['hole', 'otwór w podłodze (na wylot)']], get: () => d.area.surf, set: defSet(d.area, 'surf') },
       { label: 'Wskazówka', type: 'info', get: () => 'Klikaj narożniki; osobny kolor, tekstura i wysokość' },
     ]);
-    if (t === 'hole') return form('Nowy otwór', [
-      { label: 'Wskazówka', type: 'info', get: () => 'Klikaj narożniki otworu w podłodze bieżącej kondygnacji (strop nad kondygnacją niżej), np. szyb schodów, antresola' },
-    ]);
+    if (t === 'hole') {
+      const dh = d.hole, wall = dh.target === 'wall', re = (fn) => (v) => { fn(v); renderProps(); };
+      const spec = [
+        { key: 'ht', label: 'Gdzie', type: 'select', options: [['floor', 'w stropie (podłoga bieżącej kondygnacji)'], ['wall', 'w ścianie']], get: () => dh.target, set: re(defSet(dh, 'target')) },
+      ];
+      if (wall) spec.push(
+        { key: 'hw', label: 'Szerokość', unit: 'cm', min: 5, max: 2000, get: () => dh.width, set: defSet(dh, 'width') },
+        { key: 'hh', label: 'Wysokość', unit: 'cm', min: 5, max: 1000, get: () => dh.height, set: defSet(dh, 'height') },
+        { key: 'hs', label: 'Dół nad podłogą', unit: 'cm', min: 0, max: 1000, get: () => dh.sill, set: defSet(dh, 'sill') },
+      );
+      else spec.push(
+        { key: 'hm', label: 'Kształt', type: 'select', options: [['draw', 'obrys – klikane narożniki'], ['rect', 'prostokąt – klik w środek']], get: () => dh.mode, set: re(defSet(dh, 'mode')) },
+        ...(dh.mode === 'rect' ? [
+          { key: 'hl', label: 'Długość (oś X)', unit: 'cm', min: 5, max: 5000, get: () => dh.len, set: defSet(dh, 'len') },
+          { key: 'hd', label: 'Szerokość (oś Y)', unit: 'cm', min: 5, max: 5000, get: () => dh.wid, set: defSet(dh, 'wid') },
+        ] : []),
+      );
+      spec.push(
+        { key: 'hp', label: 'Głębokość', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: 'na wylot', get: () => dh.depth || '', set: defSet(dh, 'depth') },
+        { label: 'Wskazówka', type: 'info', get: () => (wall ? 'Kliknij ścianę w miejscu otworu' : dh.mode === 'rect' ? 'Kliknij środek otworu' : 'Klikaj narożniki, Enter lub pierwszy punkt zamyka')
+          + '. Te same ustawienia ma wycinanie w spacerze (X). Mniejsza głębokość niż ściana / strop – wnęka.' },
+      );
+      return form('Utwórz otwór', spec);
+    }
     if (t === 'plot') return form('Nowa działka', [
       { key: 'dc', label: 'Kolor terenu', type: 'color', get: () => d.plot.color, set: defSet(d.plot, 'color') },
       { label: 'Wskazówka', type: 'info', get: () => 'Klikaj narożniki granicy działki' },
@@ -1092,7 +1130,9 @@
     const hint3d = () => {
       const on = V3.pick;
       $('#hint3d').textContent = V3.walkCutOn()
-        ? 'Wycinanie: kliknij ścianę – przejście (wysoko – otwór na wysokości kliknięcia), podłogę lub sufit – otwór w stropie; wymiary popraw we właściwościach · X – koniec wycinania · przeciąganie – rozglądanie'
+        ? (V3.walkCutPoints()
+          ? `Wycinanie: punktów ${V3.walkCutPoints()} – klikaj kolejne narożniki na tej samej powierzchni · Enter albo klik w pierwszy (zielony) punkt – wytnij · 2 punkty – prostokąt · Backspace – cofnij punkt · Esc – od nowa`
+          : 'Wycinanie: klikaj narożniki otworu na ścianie, podłodze albo suficie (2 punkty – prostokąt, więcej – własny kształt) · jeden punkt + Enter – otwór domyślny · X – koniec wycinania · przeciąganie – rozglądanie')
         : V3.walkGhostOn()
         ? 'Duch: W/S/A/D – ruch przez ściany · spacja – w górę · C – w dół · ←/→ lub Q/E – obrót · Shift – szybciej · G – koniec trybu ducha (lądowanie na podłodze) · Esc – koniec spaceru'
         : V3.walking()

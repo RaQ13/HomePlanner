@@ -25,6 +25,9 @@ window.App = window.App || {};
     path: { kind: 'chodnik', mode: 'strip', width: 120 },
     fence: { style: 'panel', h: 150, base: 20, span: 250, color: '#3a3d42' },
     area: { surf: 'floor' },
+    // Utwórz otwór: w stropie (obrys rysowany albo prostokąt len × wid) lub w ścianie (width × height, dół sill);
+    // depth – głębokość (0 – na wylot; mniej – wnęka w ścianie albo w podłodze).
+    hole: { target: 'floor', mode: 'draw', len: 100, wid: 100, width: 90, height: 200, sill: 0, depth: 0 },
     install: { type: 'socket' },
     roof: { type: 'gable', pitch: 35, overhang: 50, raise: 0, color: '#8f3b2c' },
   };
@@ -375,7 +378,7 @@ window.App = window.App || {};
   // Fragment podłogi lub sufitu – osobny element w obrysie pts: { id, kind: 'area', surf: 'floor' | 'ceil', name, pts,
   // color, tex, lift (podłoga – wysokość nad podłogą, np. podest; sufit – obniżenie), thick (grubość warstwy) }.
   // surf 'hole' – otwór w podłodze na wylot (np. szyb schodów do piwnicy), bez płyty.
-  App.makeArea = (pts, surf) => ({ id: App.uid(), kind: 'area', surf, name: surf === 'ceil' ? 'Fragment sufitu' : surf === 'hole' ? 'Otwór w podłodze' : 'Fragment podłogi',
+  App.makeArea = (pts, surf) => ({ id: App.uid(), kind: 'area', surf, name: surf === 'ceil' ? 'Fragment sufitu' : surf === 'hole' ? 'Otwór w stropie' : 'Fragment podłogi',
     pts, color: surf === 'ceil' ? '#f4f2ec' : '#d9c7a8', lift: 0, thick: surf === 'ceil' ? 2 : 1 });
   // Wysokość schodów (na którą wchodzą): ustawiona albo do podłogi kondygnacji wyżej.
   // Schody zaczynają się na podłodze, z której wchodzi się na pierwszy stopień (pokój tuż przed nim, np. podest
