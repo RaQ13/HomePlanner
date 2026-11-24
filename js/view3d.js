@@ -553,6 +553,28 @@
     g.rotation.y = -Math.atan2(f.uy, f.ux);
     parent.add(g);
 
+    // Ściana nie wychodzi ponad podłogę pokoju kondygnacji wyżej (np. obniżona klatka nad piwnicą): w każdym
+    // miejscu kończy się tuż pod wierzchem najniższej z podłóg nad nią po obu stronach.
+    const up = App.project.levels[i + 1], LH = App.levelHeight(lv);
+    const capAt = (t) => {
+      if (!up) return Hh;
+      const c = { x: w.x1 + f.ux * t, y: w.y1 + f.uy * t };
+      let cap = Hh;
+      [-1, 1].forEach(sd => {
+        const r = App.roomAt(up, { x: c.x + f.nx * sd * (T / 2 + 2), y: c.y + f.ny * sd * (T / 2 + 2) });
+        if (r) cap = Math.min(cap, LH - App.roomDrop(r, i + 1) - 0.6);
+      });
+      return cap;
+    };
+    // Miejsca, w których krawędzie pokoi wyżej przecinają oś ściany (lub ich narożniki leżą przy niej).
+    const upBreaks = [];
+    if (up) up.rooms.forEach(r => r.pts.forEach((p, k) => {
+      const q = r.pts[(k + 1) % r.pts.length], dp = (p.x - w.x1) * f.nx + (p.y - w.y1) * f.ny, dq = (q.x - w.x1) * f.nx + (q.y - w.y1) * f.ny;
+      const along = (v) => (v.x - w.x1) * f.ux + (v.y - w.y1) * f.uy;
+      if (Math.abs(dp) < T + 30) upBreaks.push(along(p));
+      if (dp * dq < 0) { const s = dp / (dp - dq); upBreaks.push(along({ x: p.x + (q.x - p.x) * s, y: p.y + (q.y - p.y) * s })); }
+    }));
+    upBreaks.splice(0, upBreaks.length, ...upBreaks.filter(t => t > 0.5 && t < f.L - 0.5));
     // Otwory liczone od podłogi przy ścianie w ich miejscu (obniżony pokój), ściana zaczyna się od foot
     // (cokół do terenu) – oba mogą się zmieniać wzdłuż ściany.
     const floorAt = (t) => App.wallFloorAt(lv, i, w, G.clamp(t, 0, f.L));
@@ -622,13 +644,15 @@
     // Otwór o własnym kształcie: ściana jako obrys (z cokołem w pasach) minus otwory, w kawałkach.
     if (ops.some(op => op.o.poly)) {
       const x0 = -e0, x1 = f.L + e1;
-      const xs = [...new Set([x0, x1, ...App.wallFloorBreaks(lv, i, w)])].filter(x => x >= x0 && x <= x1).sort((a, b) => a - b);
-      const outline = [];
+      const xs = [...new Set([x0, x1, ...App.wallFloorBreaks(lv, i, w), ...upBreaks])].filter(x => x >= x0 && x <= x1).sort((a, b) => a - b);
+      const outline = [], tops = [];
       for (let k = 0; k + 1 < xs.length; k++) {
-        const ft = floorAt((xs[k] + xs[k + 1]) / 2).foot;
+        const mid = (xs[k] + xs[k + 1]) / 2, ft = floorAt(mid).foot, tp = capAt(mid);
         outline.push({ x: xs[k], y: ft }, { x: xs[k + 1], y: ft });
+        tops.push([{ x: xs[k + 1], y: tp }, { x: xs[k], y: tp }]);
       }
-      outline.push({ x: x1, y: Hh }, { x: x0, y: Hh });
+      // Góra od końca ściany do początku (pasy w odwrotnej kolejności).
+      for (let k = tops.length - 1; k >= 0; k--) outline.push(...tops[k]);
       const clean = outline.filter((q, k) => { const p = outline[(k + outline.length - 1) % outline.length]; return Math.hypot(q.x - p.x, q.y - p.y) > 0.01; });
       wallPieces(g, wallMat, clean, ops.map(op => opHole(Object.assign({}, op, { top: Math.min(op.top, Hh) }))), T);
       ops.forEach(frame);
@@ -637,16 +661,16 @@
 
     // Ściana w pionowych pasach między krawędziami otworów; w każdym pasie pełne odcinki między otworami.
     const x0 = -e0, x1 = f.L + e1;
-    const xs = [...new Set([x0, x1, ...ops.flatMap(op => [op.a, op.b]), ...App.wallFloorBreaks(lv, i, w)])].filter(x => x >= x0 && x <= x1).sort((a, b) => a - b);
+    const xs = [...new Set([x0, x1, ...ops.flatMap(op => [op.a, op.b]), ...App.wallFloorBreaks(lv, i, w), ...upBreaks])].filter(x => x >= x0 && x <= x1).sort((a, b) => a - b);
     for (let k = 0; k + 1 < xs.length; k++) {
       const a = xs[k], b = xs[k + 1], mid = (a + b) / 2;
       if (b - a < 0.1) continue;
-      const foot = floorAt(mid).foot;
+      const foot = floorAt(mid).foot, top = capAt(mid);
       const cuts = ops.filter(op => op.a <= mid && op.b >= mid)
-        .map(op => [Math.max(foot, op.bottom), Math.min(Hh, op.top)]).filter(c => c[1] > c[0]).sort((p, q) => p[0] - q[0]);
+        .map(op => [Math.max(foot, op.bottom), Math.min(top, op.top)]).filter(c => c[1] > c[0]).sort((p, q) => p[0] - q[0]);
       let y = foot;
-      cuts.forEach(([c0, c1]) => { if (c0 > y) box(g, wallMat, a, b, y, c0, T); y = Math.max(y, c1); });
-      if (y < Hh) box(g, wallMat, a, b, y, Hh, T);
+      cuts.forEach(([c0, c1]) => { if (c0 > y) box(g, wallMat, a, b, y, Math.min(c0, top), T); y = Math.max(y, c1); });
+      if (y < top) box(g, wallMat, a, b, y, top, T);
     }
     ops.forEach(frame);
   }
