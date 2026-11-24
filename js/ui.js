@@ -377,6 +377,25 @@
       );
       if (shape === 'U') {
         spec.push({ key: 'land', label: 'Głębokość spocznika', unit: 'cm', min: 20, max: 500, get: () => Math.round(o.land || o.fw), set: editSet(v => { o.land = v; o.l = Math.max(o.l, v + 60); }) });
+        // Biegi różnej długości: dłuższy wyznacza długość schodów. Zmiana 1. biegu nie przesuwa jego początku
+        // (np. przy podeście), zmiana 2. biegu – spocznika.
+        const runLen = (key) => { const q = App.stairLayout(o).parts.find(p => p.landing), L = o.l - (q.a1 - q.a0); return Math.round(o[key] ? Math.min(o[key], L) : L); };
+        const setRun = (key, v) => {
+          const lay0 = App.stairLayout(o), land = lay0.parts.find(q => q.landing), first = lay0.parts[0];
+          const anchor = key === 'l1' ? G.local(o, first.a0, 0) : G.local(o, land.a1, 0);
+          const other = key === 'l1' ? 'l2' : 'l1';
+          if (!o[other]) o[other] = runLen(other);
+          o[key] = v;
+          const depth = land.a1 - land.a0;
+          o.l = Math.max(o.l1, o.l2) + depth;
+          const lay1 = App.stairLayout(o), land1 = lay1.parts.find(q => q.landing);
+          const now = key === 'l1' ? G.local(o, lay1.parts[0].a0, 0) : G.local(o, land1.a1, 0);
+          o.x += anchor.x - now.x; o.y += anchor.y - now.y;
+        };
+        spec.push(
+          { key: 'l1', label: 'Długość 1. biegu', unit: 'cm', min: 30, max: 1000, get: () => runLen('l1'), set: editSet(v => setRun('l1', v)) },
+          { key: 'l2', label: 'Długość 2. biegu', unit: 'cm', min: 30, max: 1000, get: () => runLen('l2'), set: editSet(v => setRun('l2', v)) },
+        );
       }
       if (shape === 'L') {
         spec.push({ key: 'land', label: 'Długość podestu (wzdłuż 1. biegu)', unit: 'cm', min: 50, max: 500, get: () => Math.round(o.land || o.fw), set: editSet(v => { o.land = Math.max(v, o.fw); o.l = Math.max(o.l, o.land + 60); }) });
@@ -400,13 +419,16 @@
       if (shape !== 'straight') spec.push({ key: 'flip', label: 'Skręt w drugą stronę', type: 'checkbox', get: () => !!o.flip, set: editSet(v => { o.flip = v; }) });
       spec.push(
         { key: 'rot', label: 'Obrót', unit: '°', min: -360, max: 360, step: 15, get: () => o.rot, set: editSet(v => { o.rot = v; }) },
-        { label: 'Wys. stopnia', type: 'info', get: () => (App.stairHeight(o, lv) / lay.N).toFixed(1).replace('.', ',') + ' cm' },
-        { label: 'Głęb. stopnia', type: 'info', get: () => (first.a1 - first.a0).toFixed(1).replace('.', ',') + ' cm' },
+        { label: 'Wys. stopnia', type: 'info', get: () => (App.stairHeight(o, lv, App.project.current) / lay.N).toFixed(1).replace('.', ',') + ' cm' },
+        { label: 'Głęb. stopnia', type: 'info', get: () => {
+          const last = lay.parts[lay.parts.length - 1], cm = (v) => v.toFixed(1).replace('.', ',');
+          return cm(first.a1 - first.a0) + (shape === 'U' && Math.abs((last.a1 - last.a0) - (first.a1 - first.a0)) > 0.5 ? ' / ' + cm(last.a1 - last.a0) : '') + ' cm';
+        } },
       );
       spec.push(...texFields(o, 'tex', 'Tekstura'));
       if (shape !== 'straight') {
         // Spocznik na wysokości pełnego stopnia: wpisana wysokość zaokrąglana do najbliższego; puste – w połowie.
-        const rise = App.stairHeight(o, lv) / lay.N, landK = lay.parts.find(q => q.landing).k;
+        const rise = App.stairHeight(o, lv, App.project.current) / lay.N, landK = lay.parts.find(q => q.landing).k;
         spec.push(
           { key: 'n1', label: 'Wysokość spocznika', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: 'auto',
             get: () => Math.round(landK * rise), set: editSet(v => { if (v) o.n1 = G.clamp(Math.round(v / rise) - 1, 1, lay.N - 2); else delete o.n1; }) },
@@ -442,10 +464,17 @@
       ], [del]);
     }
     if (sel.kind === 'area') {
-      const ceil = o.surf === 'ceil';
+      const ceil = o.surf === 'ceil', hole = o.surf === 'hole';
+      const surf = { key: 'surf', label: 'Rodzaj', type: 'select', options: [['floor', 'podłoga'], ['ceil', 'sufit'], ['hole', 'otwór w podłodze (na wylot)']], get: () => o.surf || 'floor', set: editSet(v => { o.surf = v; }) };
+      if (hole) return form('Otwór w podłodze', [
+        { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name || '', set: editSet(v => { o.name = v; }) },
+        surf,
+        { label: 'Powierzchnia', type: 'info', get: () => App.fmtArea(o.pts) },
+        { label: 'Narożniki', type: 'info', get: () => String(o.pts.length) },
+      ], del);
       return form(ceil ? 'Fragment sufitu' : 'Fragment podłogi', [
         { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name || '', set: editSet(v => { o.name = v; }) },
-        { key: 'surf', label: 'Rodzaj', type: 'select', options: [['floor', 'podłoga'], ['ceil', 'sufit']], get: () => o.surf || 'floor', set: editSet(v => { o.surf = v; }) },
+        surf,
         { key: 'color', label: 'Kolor', type: 'color', get: () => o.color, set: editSet(v => { o.color = v; }) },
         ...texFields(o, 'tex', 'Tekstura'),
         { key: 'lift', label: ceil ? 'Obniżenie sufitu' : 'Wysokość nad podłogą (podest)', unit: 'cm', min: 0, max: 300, step: 0.5, get: () => o.lift || 0, set: editSet(v => { o.lift = v; if (v) o.drop = 0; }) },
@@ -743,7 +772,7 @@
     if (t === 'furniture') return furnitureCatalog(false);
     if (t === 'garden') return furnitureCatalog(true);
     if (t === 'area') return form('Nowy fragment', [
-      { key: 'ds', label: 'Rodzaj', type: 'select', options: [['floor', 'fragment podłogi'], ['ceil', 'fragment sufitu']], get: () => d.area.surf, set: defSet(d.area, 'surf') },
+      { key: 'ds', label: 'Rodzaj', type: 'select', options: [['floor', 'fragment podłogi'], ['ceil', 'fragment sufitu'], ['hole', 'otwór w podłodze (na wylot)']], get: () => d.area.surf, set: defSet(d.area, 'surf') },
       { label: 'Wskazówka', type: 'info', get: () => 'Klikaj narożniki; osobny kolor, tekstura i wysokość' },
     ]);
     if (t === 'plot') return form('Nowa działka', [

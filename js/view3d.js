@@ -414,7 +414,15 @@
         const fl = App.roomFloor(i, r), outline = floorOutline(r.pts, under, elev);
         const lift = (i === 0 ? 1 : 0.5) - fl.drop;
         // Fragmenty podłogi obniżone (wnęka, np. brodzik) – otwór w płycie podłogi pokoju.
-        const pits = lv.areas.filter(a => a.surf !== 'ceil' && a.drop > 0 && a.pts.length >= 3 && G.inside(G.centroid(a.pts), r.pts)).map(a => a.pts);
+        // Otwory w podłodze (fragment „otwór na wylot”, np. szyb schodów) – też tylko otwór.
+        const pits = lv.areas.filter(a => a.pts.length >= 3 && (a.surf === 'hole' || (a.surf !== 'ceil' && a.drop > 0)) && G.inside(G.centroid(a.pts), r.pts)).map(a => a.pts);
+        // Pokój leżący w środku (np. podest w klatce) na tej samej albo wyższej podłodze ma własną płytę – pod nim
+        // płyty pokoju zewnętrznego nie ma (zostaje miejsce np. na zejście do piwnicy pod podestem).
+        const ra = Math.abs(G.area(r.pts)), onEdge = (v) => r.pts.some((q, k) => G.project(v, q, r.pts[(k + 1) % r.pts.length]).d < 1);
+        lv.rooms.forEach(q => {
+          if (q === r || q.pts.length < 3 || Math.abs(G.area(q.pts)) >= ra || App.roomDrop(q, i) > fl.drop) return;
+          if (q.pts.every(v => onEdge(v) || G.inside(v, r.pts))) pits.push(q.pts);
+        });
         const objs = tagged(g, r.id, i, () => buildFloor(g, outline, fl.thick, lift, p.levels[i - 1], r.color, pits, elev + lift));
         if (only) return ghost(objs, 0.06);
         // Tekstura podłogi tylko na wierzchu płyty – spód (sufit kondygnacji niżej) i krawędzie bez niej.
@@ -426,7 +434,7 @@
       });
       // Fragmenty podłogi (warstwa / podest na podłodze) i sufitu (pod stropem, ewentualnie obniżone).
       if (!only) lv.areas.forEach(o => {
-        if (o.pts.length < 3) return;
+        if (o.pts.length < 3 || o.surf === 'hole') return;
         // Sufit nad pokojem nie zasłania widoku z góry, gdy kondygnacja wyżej jest ukryta.
         if (o.surf === 'ceil' && i === last && i < n - 1) return;
         const c = G.centroid(o.pts), thick = Math.max(0.5, o.thick || 1), lift = Math.max(0, o.lift || 0);
@@ -450,13 +458,13 @@
       });
       if (!only) lv.objects.forEach(o => {
         if (o.kind === 'stairs') {
-          // Schody w obniżonym pokoju zaczynają się na jego podłodze.
-          const room = App.roomAt(lv, o), drop = room ? App.roomDrop(room, i) : 0;
+          // Schody zaczynają się na podłodze, z której wchodzi się na pierwszy stopień (np. obniżony pokój, podest).
+          const drop = App.stairDrop(lv, i, o);
           const sg = new THREE.Group();
           sg.position.y = -drop;
           g.add(sg);
           sg.userData.pick = { id: o.id, level: i };
-          buildStairs(sg, o, o.h ? o.h : App.levelHeight(lv) + drop, App.levelHeight(lv) + drop);
+          buildStairs(sg, o, App.stairHeight(o, lv, i), App.levelHeight(lv) + drop);
           if (o.tex) applyTexture(meshesOf([sg], m => solid(m) && !m.userData.rail), o.tex, sg);
           if (o.texRail) applyTexture(meshesOf([sg], m => !!m.userData.rail), o.texRail, sg);
           return;
@@ -832,7 +840,7 @@
     if (below) {
       const bi = App.project.levels.indexOf(below);
       below.objects.filter(o => o.kind === 'stairs').forEach(o => {
-        if (floorZ != null && bi >= 0 && floorZ > App.elevation(bi) + App.stairHeight(o, below) + 30) return;
+        if (floorZ != null && bi >= 0 && floorZ > App.elevation(bi) + App.stairTop(o, below, bi) + 30) return;
         const rc = G.rectCorners(o);
         if (rc.every(q => G.inside(q, pts)) && !touchesEdge(pts, rc)) return stairHoles.push(o);
         // Schody tylko częściowo pod płytą (np. pod obniżonym fragmentem) – otwór w części wspólnej.

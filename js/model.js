@@ -374,10 +374,21 @@ window.App = window.App || {};
   };
   // Fragment podłogi lub sufitu – osobny element w obrysie pts: { id, kind: 'area', surf: 'floor' | 'ceil', name, pts,
   // color, tex, lift (podłoga – wysokość nad podłogą, np. podest; sufit – obniżenie), thick (grubość warstwy) }.
-  App.makeArea = (pts, surf) => ({ id: App.uid(), kind: 'area', surf, name: surf === 'ceil' ? 'Fragment sufitu' : 'Fragment podłogi',
+  // surf 'hole' – otwór w podłodze na wylot (np. szyb schodów do piwnicy), bez płyty.
+  App.makeArea = (pts, surf) => ({ id: App.uid(), kind: 'area', surf, name: surf === 'ceil' ? 'Fragment sufitu' : surf === 'hole' ? 'Otwór w podłodze' : 'Fragment podłogi',
     pts, color: surf === 'ceil' ? '#f4f2ec' : '#d9c7a8', lift: 0, thick: surf === 'ceil' ? 2 : 1 });
   // Wysokość schodów (na którą wchodzą): ustawiona albo do podłogi kondygnacji wyżej.
-  App.stairHeight = (o, lv) => o.h || App.levelHeight(lv);
+  // Schody zaczynają się na podłodze, z której wchodzi się na pierwszy stopień (pokój tuż przed nim, np. podest
+  // wyżej niż klatka); gdy tam nie ma pokoju – na podłodze pokoju pod środkiem schodów. Zwraca obniżenie tej podłogi.
+  App.stairDrop = (lv, i, o) => {
+    const q = App.stairLayout(o).parts[0], start = G.local(o, q.a0 - 3, (q.b0 + q.b1) / 2);
+    const room = App.roomAt(lv, start) || App.roomAt(lv, o);
+    return room ? App.roomDrop(room, i) : 0;
+  };
+  // i – indeks kondygnacji: bez ustawionej wysokości schody sięgają od swojej (może obniżonej) podłogi do stropu.
+  App.stairHeight = (o, lv, i) => o.h || App.levelHeight(lv) + (i == null ? 0 : App.stairDrop(lv, i, o));
+  // Rzędna wierzchu schodów względem podłogi kondygnacji.
+  App.stairTop = (o, lv, i) => App.stairHeight(o, lv, i) - App.stairDrop(lv, i, o);
   // Wysokość kondygnacji w budynku (od podłogi do podłogi wyżej): nie mniejsza niż jej najwyższa ściana –
   // ściany podniesione pojedynczo podnoszą strop i wyższe kondygnacje, sufit nie przecina pokoju.
   App.levelHeight = (lv) => lv.walls.reduce((m, w) => Math.max(m, w.h || 0), lv.height);
@@ -631,19 +642,22 @@ window.App = window.App || {};
       // Spocznik na całą szerokość, głębokość land (domyślnie równa szerokości biegu).
       const fw = Math.min(o.fw || o.w / 2, o.w / 2), land = G.clamp(o.land || fw, 20, o.l - 40);
       // n1 – stopnie przed spocznikiem: ustawione (wysokość spocznika) albo połowa.
-      const n1 = o.n1 ? G.clamp(Math.round(o.n1), 1, N - 2) : Math.floor((N - 1) / 2), n2 = N - 1 - n1, L = o.l - land, r1 = L / n1, r2 = L / n2;
-      for (let k = 0; k < n1; k++) parts.push({ a0: -hl + k * r1, a1: -hl + (k + 1) * r1, b0: -hw, b1: -hw + fw, k: k + 1 });
+      const n1 = o.n1 ? G.clamp(Math.round(o.n1), 1, N - 2) : Math.floor((N - 1) / 2), n2 = N - 1 - n1;
+      // Długości biegów (od spocznika): l1, l2 – ustawione (bieg krótszy od całych schodów) albo na całą długość.
+      const L = o.l - land, L1 = o.l1 ? G.clamp(o.l1, 10, L) : L, L2 = o.l2 ? G.clamp(o.l2, 10, L) : L, r1 = L1 / n1, r2 = L2 / n2;
+      const s1 = hl - land - L1, s2 = hl - land - L2;
+      for (let k = 0; k < n1; k++) parts.push({ a0: s1 + k * r1, a1: s1 + (k + 1) * r1, b0: -hw, b1: -hw + fw, k: k + 1 });
       parts.push({ a0: hl - land, a1: hl, b0: -hw, b1: hw, k: n1 + 1, landing: true });
       for (let k = 0; k < n2; k++) parts.push({ a0: hl - land - (k + 1) * r2, a1: hl - land - k * r2, b0: hw - fw, b1: hw, k: n1 + 2 + k });
-      path = [[-hl + r1 / 2, -hw + fw / 2], [hl - land / 2, -hw + fw / 2], [hl - land / 2, hw - fw / 2], [-hl, hw - fw / 2]];
-      rails.push({ side: 'in', a0: -hl, b0: -hw + fw, k0: 0, a1: hl - land, b1: -hw + fw, k1: n1, ia: 0, ib: -1 });
-      rails.push({ side: 'in', a0: hl - land, b0: hw - fw, k0: n1 + 1, a1: -hl, b1: hw - fw, k1: N, ia: 0, ib: 1 });
+      path = [[s1 + r1 / 2, -hw + fw / 2], [hl - land / 2, -hw + fw / 2], [hl - land / 2, hw - fw / 2], [s2, hw - fw / 2]];
+      rails.push({ side: 'in', a0: s1, b0: -hw + fw, k0: 0, a1: hl - land, b1: -hw + fw, k1: n1, ia: 0, ib: -1 });
+      rails.push({ side: 'in', a0: hl - land, b0: hw - fw, k0: n1 + 1, a1: s2, b1: hw - fw, k1: N, ia: 0, ib: 1 });
       if (hw - fw > 3) rails.push({ side: 'in', a0: hl - land, b0: -hw + fw, k0: n1 + 1, a1: hl - land, b1: hw - fw, k1: n1 + 1, ia: 1, ib: 0 });
-      rails.push({ side: 'out', a0: -hl, b0: -hw, k0: 0, a1: hl - land, b1: -hw, k1: n1, ia: 0, ib: 1 });
+      rails.push({ side: 'out', a0: s1, b0: -hw, k0: 0, a1: hl - land, b1: -hw, k1: n1, ia: 0, ib: 1 });
       rails.push({ side: 'out', a0: hl - land, b0: -hw, k0: n1 + 1, a1: hl, b1: -hw, k1: n1 + 1, ia: 0, ib: 1 });
       rails.push({ side: 'out', a0: hl, b0: -hw, k0: n1 + 1, a1: hl, b1: hw, k1: n1 + 1, ia: -1, ib: 0 });
       rails.push({ side: 'out', a0: hl, b0: hw, k0: n1 + 1, a1: hl - land, b1: hw, k1: n1 + 1, ia: 0, ib: -1 });
-      rails.push({ side: 'out', a0: hl - land, b0: hw, k0: n1 + 1, a1: -hl, b1: hw, k1: N, ia: 0, ib: -1 });
+      rails.push({ side: 'out', a0: hl - land, b0: hw, k0: n1 + 1, a1: s2, b1: hw, k1: N, ia: 0, ib: -1 });
     } else if (shape === 'L') {
       N = Math.max(4, N);
       // Podest w narożniku: land – długość (wzdłuż pierwszego biegu), landW – szerokość (wzdłuż drugiego);

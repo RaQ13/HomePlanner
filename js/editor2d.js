@@ -1624,7 +1624,7 @@
     // Schody: liczba i wymiar stopni.
     lv.objects.filter(o => o.kind === 'stairs').forEach(o => {
       const lay = App.stairLayout(o), q = lay.parts[0];
-      label(o.x, o.y, `${lay.N} × ${fmtCm(App.stairHeight(o, lv) / lay.N)}/${fmtCm(q.a1 - q.a0)}`, { font: '9.5px system-ui, sans-serif', color: '#111', bg: 'rgba(255,255,255,0.85)' });
+      label(o.x, o.y, `${lay.N} × ${fmtCm(App.stairHeight(o, lv, App.project.current) / lay.N)}/${fmtCm(q.a1 - q.a0)}`, { font: '9.5px system-ui, sans-serif', color: '#111', bg: 'rgba(255,255,255,0.85)' });
     });
   }
   function drawTitle(lv) {
@@ -1650,6 +1650,25 @@
   function drawAreas(lv, tech) {
     lv.areas.forEach(o => {
       path(o.pts);
+      if (o.surf === 'hole') {
+        // Otwór na wylot: białe pole przekreślone po przekątnych (jak otwór w stropie na rysunku).
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        const xs = o.pts.map(q => q.x), ys = o.pts.map(q => q.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        ctx.save();
+        ctx.clip();
+        ctx.beginPath();
+        ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.moveTo(x1, y0); ctx.lineTo(x0, y1);
+        ctx.strokeStyle = '#6b7280';
+        ctx.lineWidth = px(1);
+        ctx.stroke();
+        ctx.restore();
+        path(o.pts);
+        ctx.strokeStyle = '#374151';
+        ctx.lineWidth = px(1.2);
+        ctx.stroke();
+        return;
+      }
       if (o.surf !== 'ceil') {
         ctx.fillStyle = tech ? '#ffffff' : texPattern(o.tex) || o.color || '#d9c7a8';
         ctx.fill();
