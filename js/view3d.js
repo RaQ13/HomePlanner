@@ -515,7 +515,7 @@
   }
 
   function buildWall(parent, lv, w, wallMat, i) {
-    const f = App.wallFrame(w), T = w.t, Hh = App.wallHeight(lv, w);
+    const f = App.wallFrame(w), T = w.t, Hh = App.wallHeight(lv, w) - App.wallUnderSlab(i, w);
     const e0 = App.wallEndConnected(lv, w, 0) ? T / 2 : 0, e1 = App.wallEndConnected(lv, w, 1) ? T / 2 : 0;
     const g = new THREE.Group();
     g.position.set(w.x1, 0, w.y1);
@@ -1584,7 +1584,58 @@
     }
     return false;
   }
+  // Tryb ducha: bez kolizji i grawitacji – przez ściany i stropy, w górę spacja, w dół C.
+  V.walkGhost = (on) => {
+    if (!W.on) return;
+    W.ghost = on == null ? !W.ghost : !!on;
+    W.goal = null;
+    if (!W.ghost) {
+      // Lądowanie na najbliższej podłodze pod sobą.
+      const h = floorHit(W.pos.x, W.pos.z, W.pos.y + 0.3);
+      W.target = h ? h.point.y : W.pos.y;
+      if (h) standOn(h);
+    }
+    App.emit('walk', true);
+  };
+  V.walkGhostOn = () => !!(W.on && W.ghost);
+  // Kondygnacja w trybie ducha – z wysokości oczu nad rzędnymi kondygnacji.
+  function ghostLevel() {
+    const y = W.pos.y * 100 + 20, lv = App.project.levels;
+    let k = 0;
+    lv.forEach((l, i) => { if (App.elevation(i) <= y) k = i; });
+    W.level = k;
+  }
+  function ghostStep(dt) {
+    const k = W.keys, run = k.has('ShiftLeft') || k.has('ShiftRight');
+    const speed = (run ? 4 : 1.8) * dt;
+    if (k.has('ArrowLeft') || k.has('KeyQ')) W.yaw += 1.8 * dt;
+    if (k.has('ArrowRight') || k.has('KeyE')) W.yaw -= 1.8 * dt;
+    let f = 0, sd = 0, up = 0;
+    if (k.has('KeyW') || k.has('ArrowUp')) f += 1;
+    if (k.has('KeyS') || k.has('ArrowDown')) f -= 1;
+    if (k.has('KeyD')) sd += 1;
+    if (k.has('KeyA')) sd -= 1;
+    if (k.has('Space')) up += 1;
+    if (k.has('KeyC')) up -= 1;
+    const fx = -Math.sin(W.yaw), fz = -Math.cos(W.yaw), rx = -fz, rz = fx;
+    if (f || sd) {
+      const l = Math.hypot(f, sd);
+      W.pos.x += (fx * f + rx * sd) / l * speed;
+      W.pos.z += (fz * f + rz * sd) / l * speed;
+    } else if (W.goal) {
+      const dx = W.goal.x - W.pos.x, dz = W.goal.z - W.pos.z, d = Math.hypot(dx, dz), s = Math.min(d, speed * 1.6);
+      if (d < 0.05) W.goal = null; else { W.pos.x += dx / d * s; W.pos.z += dz / d * s; }
+    }
+    W.pos.y = G.clamp(W.pos.y + up * speed, -20, 60);
+    W.target = W.pos.y;
+    W.eye = EYE;
+    ghostLevel();
+    camera.position.set(W.pos.x, W.pos.y + W.eye, W.pos.z);
+    camera.rotation.set(W.pitch, W.yaw, 0, 'YXZ');
+    sendWalker();
+  }
   function walkStep(dt) {
+    if (W.ghost) return ghostStep(dt);
     const k = W.keys, run = k.has('ShiftLeft') || k.has('ShiftRight');
     const speed = (run ? 3.5 : 1.5) * dt;
     if (k.has('ArrowLeft') || k.has('KeyQ')) W.yaw += 1.8 * dt;
@@ -1682,6 +1733,7 @@
   V.walkStop = () => {
     if (!W.on) return;
     W.on = false;
+    W.ghost = false;
     W.keys.clear();
     const s = W.saved;
     camera.position.copy(s.pos);
@@ -1729,12 +1781,13 @@
       else W.goal = h.point.clone().addScaledVector(ray.ray.direction, -0.4);
     });
     // Klawisze ruchu przechwytywane przed skrótami edytora (W, S, A, D, Q, E, strzałki).
-    const MOVE = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight']);
+    const MOVE = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyC']);
     window.addEventListener('keydown', (e) => {
       if (!W.on || !V.visible || e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (e.key === 'Escape') { V.walkStop(); }
+      else if (e.code === 'KeyG') { if (!e.repeat) V.walkGhost(); }
       else if (MOVE.has(e.code)) W.keys.add(e.code);
       else return;
       e.preventDefault();

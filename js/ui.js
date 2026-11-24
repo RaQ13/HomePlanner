@@ -1054,8 +1054,10 @@
     const pickBtn = $('#btn-3d-pick');
     const hint3d = () => {
       const on = V3.pick;
-      $('#hint3d').textContent = V3.walking()
-        ? 'Spacer: W/S lub ↑/↓ – naprzód/wstecz · A/D – w bok · ←/→ lub Q/E – obrót · Shift – bieg · przeciąganie – rozglądanie · dwuklik – przejdź tam · kółko – przybliżenie · Esc – koniec'
+      $('#hint3d').textContent = V3.walkGhostOn()
+        ? 'Duch: W/S/A/D – ruch przez ściany · spacja – w górę · C – w dół · ←/→ lub Q/E – obrót · Shift – szybciej · G – koniec trybu ducha (lądowanie na podłodze) · Esc – koniec spaceru'
+        : V3.walking()
+        ? 'Spacer: W/S lub ↑/↓ – naprzód/wstecz · A/D – w bok · ←/→ lub Q/E – obrót · Shift – bieg · przeciąganie – rozglądanie · dwuklik – przejdź tam · kółko – przybliżenie · G – tryb ducha · Esc – koniec'
         : on ? 'Kliknij element, aby go zaznaczyć · przeciąganie – obrót · prawy – przesuw · kółko – zoom'
           : 'Lewy przycisk – obrót · prawy – przesuw · kółko – zoom · ludzik w rogu – spacer po domu';
     };
@@ -1098,9 +1100,12 @@
       window.addEventListener('pointerup', up);
     };
     $('#btn-walk-exit').onclick = V3.walkStop;
+    $('#btn-walk-ghost').onclick = () => V3.walkGhost();
     App.on('walk', (on) => {
       peg.hidden = on;
       $('#btn-walk-exit').hidden = !on;
+      $('#btn-walk-ghost').hidden = !on;
+      $('#btn-walk-ghost').classList.toggle('active', V3.walkGhostOn());
       $('#view3d').classList.toggle('walking', on);
       hint3d();
     });

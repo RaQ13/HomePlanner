@@ -345,6 +345,27 @@ window.App = window.App || {};
     return { L, ux, uy, nx: -uy, ny: ux };
   };
   App.wallHeight = (lv, w) => w.h || lv.height;
+  // Ściana wewnętrzna kondygnacji i, nad którą z obu stron leży podłoga pokoju kondygnacji wyżej, kończy się pod
+  // płytą stropu – inaczej jej wierzch prześwituje przez podłogę. Zwraca grubość płyty do odjęcia (0 – bez zmian,
+  // np. ściana zewnętrzna, która przechodzi w elewację).
+  App.wallUnderSlab = (i, w) => {
+    const p = App.project, lv = p.levels[i], up = p.levels[i + 1];
+    if (!up || !up.rooms.length || App.wallHeight(lv, w) < App.levelHeight(lv)) return 0;
+    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+    if (L < 1) return 0;
+    const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, off = w.t / 2 + 3;
+    let thick = 0;
+    for (let k = 0; k <= 4; k++) {
+      const t = L * (0.05 + 0.9 * k / 4), cx = w.x1 + ux * t, cy = w.y1 + uy * t;
+      for (const s of [1, -1]) {
+        const q = { x: cx - uy * off * s, y: cy + ux * off * s };
+        const r = up.rooms.find(rm => rm.pts.length >= 3 && G.inside(q, rm.pts));
+        if (!r) return 0;
+        thick = Math.max(thick, App.roomFloor(i + 1, r).thick);
+      }
+    }
+    return thick;
+  };
   // Fragment podłogi lub sufitu – osobny element w obrysie pts: { id, kind: 'area', surf: 'floor' | 'ceil', name, pts,
   // color, tex, lift (podłoga – wysokość nad podłogą, np. podest; sufit – obniżenie), thick (grubość warstwy) }.
   App.makeArea = (pts, surf) => ({ id: App.uid(), kind: 'area', surf, name: surf === 'ceil' ? 'Fragment sufitu' : 'Fragment podłogi',

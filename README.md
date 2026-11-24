@@ -58,6 +58,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 - Uskok między podłogami pokoi do 1 m (np. korytarz „na poziomie terenu” przy podniesionym parterze) przechodzi się jak po schodkach w drzwiach. Na meble tak się nie wejdzie.
 - Pod niskim spocznikiem albo skosem ludzik się schyla. Zatrzymuje się dopiero, gdy wolnej wysokości jest mniej niż 1,2 m. Przez otwór w stropie nad schodami do piwnicy można zejść na schody.
 - Na rzucie widać ludzika i jego pole widzenia. Na czas spaceru drzwi są otwarte i widać cały dom.
+- **Tryb ducha** – klawisz **G** albo przycisk **Duch**: przechodzenie przez ściany i stropy, **spacja** – w górę, **C** – w dół. Ponowne **G** kończy tryb ducha i ludzik ląduje na najbliższej podłodze pod sobą.
 - **Esc** albo **Zakończ spacer** przywraca poprzedni widok.
 
 ## Narzędzia (klawisze)
