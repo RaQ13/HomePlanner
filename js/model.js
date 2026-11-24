@@ -509,13 +509,14 @@ window.App = window.App || {};
   // Ściana na tej samej prostej co krawędź a-b, pokrywająca ją tylko częściowo (np. krawędź z przejściem bez drzwi
   // między dwiema ścianami) – ta o największym wspólnym odcinku; lico ściany wyznacza wtedy obrys całej krawędzi.
   App.edgeWallPart = (lv, a, b) => {
-    let best = null, bestLen = 10;
+    // Także ściana tylko dotykająca końca krawędzi – przejście na całą długość krawędzi między dwiema ścianami.
+    let best = null, bestLen = -1;
     lv.walls.forEach(o => {
       const f = App.wallFrame(o);
       const along = (p) => (p.x - o.x1) * f.ux + (p.y - o.y1) * f.uy, off = (p) => Math.abs((p.x - o.x1) * f.nx + (p.y - o.y1) * f.ny);
       if (off(a) > 1 || off(b) > 1) return;
       const ta = along(a), tb = along(b), len = Math.min(f.L, Math.max(ta, tb)) - Math.max(0, Math.min(ta, tb));
-      if (len > bestLen) { bestLen = len; best = o; }
+      if (len > bestLen && (len > 10 || len > -1 && Math.abs(Math.hypot(b.x - a.x, b.y - a.y)) > 1)) { bestLen = len; best = o; }
     });
     return best;
   };
