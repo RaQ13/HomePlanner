@@ -846,7 +846,18 @@
         // już opada) kończy się pod połacią, a nie przebija jej.
         if (!lvI.attic) lvI.roofs.forEach(r => { const hr = App.roofHeightAt(r, i, p); if (hr != null) top = Math.min(top, hr - elev - 1); });
       });
-      if (top < Hh - 0.5) clipped = true;
+      // Ściana pod połacią dachu tej samej kondygnacji (nie na jego szczycie): dopełniona do połaci – bez prześwitu
+      // między ścianą a dachem i bez podnoszenia wysokości kondygnacji (np. ściana przybudówki pod dachem garażu).
+      if (!lvI.attic && top >= Hh - 0.5) lvI.roofs.forEach(r => {
+        const c = { x: w.x1 + f.ux * s, y: w.y1 + f.uy * s }, q = G.toLocal(r, c), rr = r.rot * Math.PI / 180;
+        // Ściana szczytowa (w poprzek kalenicy, przy końcu dachu) – szczyt dachu jest budowany osobno.
+        const across = Math.abs(f.ux * Math.cos(rr) + f.uy * Math.sin(rr)) < 0.3;
+        if (across && Math.abs(Math.abs(q.a) - r.l / 2) < w.t) return;
+        const hs = [-1, 1].map(sd => App.roofHeightAt(r, i, { x: c.x + f.nx * sd * w.t / 2, y: c.y + f.ny * sd * w.t / 2 }));
+        if (hs.some(h => h == null)) return;
+        top = Math.max(top, Math.min(...hs) - elev - 1);
+      });
+      if (Math.abs(top - Hh) > 0.5) clipped = true;
       pts.push([s, Math.max(0, top)]);
     }
     if (!clipped) return null;
