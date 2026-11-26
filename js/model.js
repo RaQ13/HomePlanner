@@ -601,6 +601,28 @@ window.App = window.App || {};
     });
     return best;
   };
+  // Ściana prawie na krawędzi a-b (lekko skośna albo przesunięta o kilka cm – np. narysowana „na oko”), zachodząca
+  // na krawędź co najmniej na 10 cm; ta o największym wspólnym odcinku. Zwraca { w, axis } – axis: odsunięcie osi
+  // ściany od krawędzi w stronę wnętrza pokoju (sign – po której stronie leży wnętrze).
+  App.edgeWallNear = (lv, a, b, sign) => {
+    const L = G.dist(a, b);
+    if (L < 1) return null;
+    const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L, nx = -uy * sign, ny = ux * sign;
+    let best = null, bestLen = 10;
+    lv.walls.forEach(o => {
+      const f = App.wallFrame(o);
+      if (Math.abs(f.ux * uy - f.uy * ux) > 0.03) return; // do ok. 1,7°
+      const t1 = (o.x1 - a.x) * ux + (o.y1 - a.y) * uy, t2 = (o.x2 - a.x) * ux + (o.y2 - a.y) * uy;
+      const lo = Math.max(0, Math.min(t1, t2)), hi = Math.min(L, Math.max(t1, t2));
+      if (hi - lo <= bestLen) return;
+      // Odsunięcie osi od krawędzi w środku wspólnego odcinka.
+      const tm = (lo + hi) / 2, k = (tm - t1) / ((t2 - t1) || 1e-9);
+      const px = o.x1 + (o.x2 - o.x1) * k, py = o.y1 + (o.y2 - o.y1) * k, axis = (px - a.x) * nx + (py - a.y) * ny;
+      if (Math.abs(axis) > Math.max(3, o.t / 2)) return;
+      bestLen = hi - lo; best = { w: o, axis };
+    });
+    return best;
+  };
   // Czy krawędź pokoju a-b i ściana o leżą na jednej prostej i zachodzą na siebie?
   App.edgeOnWall = (o, a, b) => {
     const p1 = { x: o.x1, y: o.y1 }, p2 = { x: o.x2, y: o.y2 }, L = App.wallFrame(o).L;
@@ -620,7 +642,9 @@ window.App = window.App || {};
     const lines = pts.map((a, i) => {
       const b = pts[(i + 1) % n], L = G.dist(a, b) || 1e-6;
       const dx = (b.x - a.x) / L, dy = (b.y - a.y) / L;
-      const w = App.edgeWall(lv, a, b) || App.edgeWallPart(lv, a, b), off = w ? w.t / 2 : 0;
+      const w = App.edgeWall(lv, a, b) || App.edgeWallPart(lv, a, b), near = w ? null : App.edgeWallNear(lv, a, b, sign);
+      // Lico ściany: pół grubości od osi (ściana prawie na krawędzi – od jej rzeczywistej osi).
+      const off = w ? w.t / 2 : near ? near.axis + near.w.t / 2 : 0;
       const nx = -dy * sign, ny = dx * sign;
       return { px: a.x + nx * off, py: a.y + ny * off, dx, dy };
     });
@@ -633,6 +657,44 @@ window.App = window.App || {};
     });
   };
   App.roomNetArea = (lv, room) => Math.abs(G.area(App.roomNetPolygon(lv, room))) / 10000;
+  // Zdublowane ściany: prawie równoległe, z osiami bliżej niż połowy grubości (jedna w drugiej) i wspólnym odcinkiem.
+  // Zwraca pary { keep, drop, overlap, covered } – drop to krótsza / cieńsza; covered – leży w keep prawie w całości.
+  App.duplicateWalls = (lv) => {
+    const out = [], used = new Set();
+    lv.walls.forEach((a, i) => lv.walls.forEach((b, j) => {
+      if (j <= i || used.has(a.id) || used.has(b.id) || a.hidden || b.hidden) return;
+      const fa = App.wallFrame(a), fb = App.wallFrame(b);
+      if (Math.abs(fa.ux * fb.uy - fa.uy * fb.ux) > 0.03) return;
+      const along = (x, y) => (x - a.x1) * fa.ux + (y - a.y1) * fa.uy, offs = (x, y) => (x - a.x1) * fa.nx + (y - a.y1) * fa.ny;
+      const d = Math.abs((offs(b.x1, b.y1) + offs(b.x2, b.y2)) / 2);
+      if (d > Math.max(a.t, b.t) / 2) return;
+      const t1 = along(b.x1, b.y1), t2 = along(b.x2, b.y2), lo = Math.max(0, Math.min(t1, t2)), hi = Math.min(fa.L, Math.max(t1, t2)), ov = hi - lo;
+      if (ov < 10) return;
+      // Zostaje dłuższa (przy równej – grubsza).
+      const keepA = fa.L > fb.L + 1 || (Math.abs(fa.L - fb.L) <= 1 && a.t >= b.t);
+      const keep = keepA ? a : b, drop = keepA ? b : a, dropL = keepA ? fb.L : fa.L;
+      out.push({ keep, drop, overlap: ov, covered: ov >= dropL - 2 });
+      used.add(drop.id);
+    }));
+    return out;
+  };
+  // Usuwa zdublowane ściany leżące w całości w innej; ich otwory przechodzą na ścianę, która zostaje (w tym samym miejscu).
+  App.removeDuplicateWalls = (lv) => {
+    const pairs = App.duplicateWalls(lv).filter(p => p.covered);
+    pairs.forEach(({ keep, drop }) => {
+      const fk = App.wallFrame(keep), fd = App.wallFrame(drop);
+      lv.openings.filter(o => o.wallId === drop.id).forEach(o => {
+        const pos = App.openingPos(drop, o), cx = drop.x1 + fd.ux * pos, cy = drop.y1 + fd.uy * pos;
+        const np = (cx - keep.x1) * fk.ux + (cy - keep.y1) * fk.uy;
+        // Otwór na ścianie o przeciwnym kierunku: zamiana stron i zawiasów, żeby drzwi otwierały się tak samo.
+        if (fk.ux * fd.ux + fk.uy * fd.uy < 0) { o.side = !o.side; o.flip = !o.flip; if (o.poly) o.poly = o.poly.map(q => ({ u: 1 - q.u, v: q.v })); }
+        o.wallId = keep.id; o.pos = Math.round(np * 10) / 10;
+      });
+      (lv.installs || []).forEach(o => { if (o.wallId === drop.id) o.wallId = keep.id; });
+      lv.walls = lv.walls.filter(w => w !== drop);
+    });
+    return pairs.length;
+  };
   // Wysokość w świetle nad punktem planu na kondygnacji i: wysokość kondygnacji ścięta połaciami dachów (z lukarnami).
   // Zwraca funkcję p => cm (dachy i lukarny liczone raz).
   App.clearHeightFn = (i) => {

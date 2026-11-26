@@ -1654,6 +1654,16 @@
     $('#btn-lv-del').onclick = removeLevel;
     $('#btn-lv-basement').onclick = addBasement;
     $('#btn-lv-copy').onclick = copyWallsFromBelow;
+    $('#btn-lv-dups').onclick = () => {
+      const lv = App.level(), pairs = App.duplicateWalls(lv), full = pairs.filter(p => p.covered), part = pairs.filter(p => !p.covered);
+      if (!pairs.length) { alert(`${lv.name}: brak zdublowanych ścian.`); return; }
+      const desc = (p) => `• ${p.drop.id} (gr. ${p.drop.t} cm) w ${p.keep.id} (gr. ${p.keep.t} cm), wspólne ${Math.round(p.overlap)} cm`;
+      let msg = `${lv.name}: zdublowane ściany\n` + (full.length ? `\nDo usunięcia (leżą w całości w innej):\n${full.map(desc).join('\n')}` : '')
+        + (part.length ? `\n\nNachodzą tylko częściowo (bez zmian – popraw ręcznie):\n${part.map(desc).join('\n')}` : '');
+      if (!full.length) { alert(msg); return; }
+      if (!confirm(msg + `\n\nUsunąć ${full.length} ${full.length === 1 ? 'ścianę' : 'ściany'}? Otwory przejdą na ścianę, która zostaje.`)) return;
+      App.edit(() => App.removeDuplicateWalls(lv));
+    };
     document.querySelectorAll('[data-view]').forEach(b => { b.onclick = () => UI.setView(b.dataset.view); });
     const name = $('#proj-name');
     name.onchange = () => App.edit(() => { App.project.name = name.value.trim() || 'Projekt'; });

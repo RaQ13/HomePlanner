@@ -93,6 +93,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 - **Dev** (górne menu) – tryb dewelopera: we Właściwościach ID, rodzaj i kondygnacja zaznaczonego elementu, jego surowe dane w JSON (edycja + „Zastosuj”, kopiowanie) i wartości liczone przez model (np. długość i połączenia ściany, wymiary otworu, pola pokoju, rozkład schodów); na pasku stanu element pod kursorem na rzucie i w 3D.
 - **Dach z załamaniem połaci** (zaznaczony): linię załamania i kalenicę przeciąga się za kółka na rzucie – załamanie zmienia szerokość dolnej części połaci, kalenica – spadek dolnej części (okapy zostają na jednej wysokości); wartości na pasku stanu, Ctrl – precyzyjnie.
 - **Sufit pokoju** (właściwości pokoju): własny strop dla pokoju bez kondygnacji nad nim (np. przybudówka, korytarz przy garażu) – wysokość od podłogi (puste – wierzch na wysokości ścian), grubość; otwory w nim robi „Utwórz otwór” (Gdzie: w suficie pokoju) i wycinanie w spacerze (klik w sufit).
+- **Usuń zdublowane ściany** (panel Kondygnacje): znajduje ściany leżące jedna w drugiej (np. dwie ściany między sąsiednimi pokojami) i usuwa zbędne; otwory przechodzą na ścianę, która zostaje. Powierzchnia netto uwzględnia też ściany lekko skośne lub przesunięte o kilka cm względem krawędzi pokoju.
 - T: obróć. M: odbij lustrzanie (meble, schody).
 - Esc: przerwij rysowanie albo odznacz element.
 - Ctrl+S: zapisz projekt do pliku.
