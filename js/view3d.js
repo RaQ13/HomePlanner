@@ -709,6 +709,27 @@
       sg.userData.pick = { id: op.o.id };
       g.add(sg);
       if (op.o.kind === 'window') return buildWindow(sg, op, T);
+      // Sam otwór nie ma ościeżnicy – do zaznaczania w 3D niewidoczna ramka (8 cm) wzdłuż jego krawędzi, na całą grubość
+      // ściany; spacer pomija niewidoczne elementy, a przez środek otworu nadal widać i klika się to, co za nim.
+      if (op.o.empty) {
+        const hp = opHole(op), c = hp.reduce((m, q) => ({ x: m.x + q.x / hp.length, y: m.y + q.y / hp.length }), { x: 0, y: 0 });
+        const pm = new THREE.MeshBasicMaterial({ visible: false });
+        hp.forEach((p, k) => {
+          const q = hp[(k + 1) % hp.length], L = Math.hypot(q.x - p.x, q.y - p.y);
+          if (L < 1) return;
+          const ux = (q.x - p.x) / L, uy = (q.y - p.y) / L;
+          // Normalna krawędzi skierowana do środka otworu.
+          let nx = -uy, ny = ux;
+          if ((c.x - (p.x + q.x) / 2) * nx + (c.y - (p.y + q.y) / 2) * ny < 0) { nx = -nx; ny = -ny; }
+          const m = new THREE.Mesh(new THREE.BoxGeometry(L, 8, T + 2), pm);
+          m.position.set((p.x + q.x) / 2 + nx * 4, (p.y + q.y) / 2 + ny * 4, 0);
+          m.rotation.z = Math.atan2(uy, ux);
+          m.visible = false;
+          m.userData.pickOnly = true;
+          sg.add(m);
+        });
+        return;
+      }
       // Drzwi budowane od zera – podgrupa stoi na podłodze przy ścianie.
       sg.position.y = op.bottom;
       buildDoor(sg, Object.assign({}, op, { bottom: 0, top: op.top - op.bottom }), T);
