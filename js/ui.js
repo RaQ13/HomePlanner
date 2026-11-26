@@ -1081,7 +1081,11 @@
   function updateStatus() {
     const s = E.snap;
     $('#st-coords').textContent = s ? `x ${(s.x / 100).toFixed(2)}  y ${(s.y / 100).toFixed(2)} m` : '';
-    $('#st-hint').textContent = E.typed ? `Długość: ${E.typed} cm — Enter, aby zatwierdzić` : E.hint();
+    const d = E.drag, r = d && d.type === 'move' && d.refs && d.refs[0];
+    const mv = r ? `przesunięcie ${String(Math.round((r.o[r.kx] - r.x0) * 10) / 10).replace('.', ',')} / ${String(Math.round((r.o[r.ky] - r.y0) * 10) / 10).replace('.', ',')} cm` : '';
+    $('#st-hint').textContent = E.typed ? `Długość: ${E.typed} cm — Enter, aby zatwierdzić`
+      : d && d.type !== 'pan' ? (E.fine ? 'Ctrl – precyzyjnie: ruch 10× wolniejszy, krok 1 mm, bez przyciągania' : 'Przytrzymaj Ctrl – przesuwanie co 1 mm') + (mv ? ' · ' + mv : '')
+      : E.hint();
     $('#st-zoom').textContent = Math.round(E.scale * 100 / 0.6) + '%';
     $('#btn-undo').disabled = !App.canUndo();
     $('#btn-redo').disabled = !App.canRedo();

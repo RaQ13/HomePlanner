@@ -235,6 +235,24 @@
     E.screen = evPos(e);
     E.mouse = E.toWorld(E.screen.x, E.screen.y);
     E.shift = e.shiftKey;
+    E.fine = e.ctrlKey || e.metaKey;
+  }
+  // Ctrl przy przeciąganiu: ruch 10× wolniejszy i krok 0,1 cm (1 mm), bez przyciągania do siatki i punktów.
+  // Po puszczeniu Ctrl element nie skacze – przesunięcie względem kursora zostaje.
+  function dragMouse(d) {
+    const f = d.fm || (d.fm = { off: { x: 0, y: 0 }, anchor: null, prev: d.start || { x: E.mouse.x, y: E.mouse.y } });
+    let p;
+    if (E.fine) {
+      // Punkt odniesienia – poprzednie położenie kursora, więc cały ruch od wciśnięcia Ctrl jest spowolniony.
+      if (!f.anchor) f.anchor = { m: f.prev, e: { x: f.prev.x + f.off.x, y: f.prev.y + f.off.y } };
+      p = { x: f.anchor.e.x + (E.mouse.x - f.anchor.m.x) * 0.1, y: f.anchor.e.y + (E.mouse.y - f.anchor.m.y) * 0.1 };
+      f.off = { x: p.x - E.mouse.x, y: p.y - E.mouse.y };
+    } else {
+      f.anchor = null;
+      p = { x: E.mouse.x + f.off.x, y: E.mouse.y + f.off.y };
+    }
+    f.prev = { x: E.mouse.x, y: E.mouse.y };
+    return p;
   }
   const startPan = (e) => ({ type: 'pan', sx: e.clientX, sy: e.clientY, ox: E.ox, oy: E.oy, moved: false, button: e.button });
 
@@ -485,44 +503,47 @@
         canvas.style.cursor = E.space ? 'grab' : E.hover ? (['vertex', 'roofCorner', 'runVertex', 'polyVertex'].includes(E.hover.type) ? 'move' : 'pointer') : 'default';
         return;
       }
-      const g = App.project.settings.grid || 1, lv = App.level();
+      const lv = App.level(), M = dragMouse(d), g = E.fine ? 0.1 : App.project.settings.grid || 1;
+      const snapAt = (p, opt) => (E.fine ? { x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, kind: 'fine' } : E.snapPoint(p, opt));
+      const rg = (v) => Math.round(Math.round(v / g) * g * 10) / 10;
       if (d.type === 'vertex') {
-        const s = E.snapPoint(E.mouse, { exclude: d.exclude });
+        const s = snapAt(M, { exclude: d.exclude });
         E.snap = s;
         d.refs.forEach(r => { r.o[r.kx] = s.x; r.o[r.ky] = s.y; });
       } else if (d.type === 'move') {
-        let dx = Math.round((E.mouse.x - d.start.x) / g) * g, dy = Math.round((E.mouse.y - d.start.y) / g) * g;
+        let dx = rg(M.x - d.start.x), dy = rg(M.y - d.start.y);
         if (d.axis) {
-          const t = Math.round(((E.mouse.x - d.start.x) * d.axis.x + (E.mouse.y - d.start.y) * d.axis.y) / g) * g;
+          const t = rg((M.x - d.start.x) * d.axis.x + (M.y - d.start.y) * d.axis.y);
           dx = d.axis.x * t; dy = d.axis.y * t;
         }
         d.refs.forEach(r => { r.o[r.kx] = r.x0 + dx; r.o[r.ky] = r.y0 + dy; });
       } else if (d.type === 'opening') {
         const w = lv.walls.find(x => x.id === d.o.wallId);
         if (!w) return;
-        const f = App.wallFrame(w), pr = G.project(E.mouse, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 });
-        d.o.pos = App.openingFree(w, d.o) ? Math.round(G.clamp(pr.t * f.L, -f.L, 2 * f.L)) : Math.round(G.clamp(pr.t * f.L, d.o.width / 2, f.L - d.o.width / 2));
+        const f = App.wallFrame(w), pr = G.project(M, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 });
+        const rp = (v) => (E.fine ? Math.round(v * 10) / 10 : Math.round(v));
+        d.o.pos = App.openingFree(w, d.o) ? rp(G.clamp(pr.t * f.L, -f.L, 2 * f.L)) : rp(G.clamp(pr.t * f.L, d.o.width / 2, f.L - d.o.width / 2));
       } else if (d.type === 'object') {
-        d.o.x = Math.round((d.x0 + E.mouse.x - d.start.x) / g) * g;
-        d.o.y = Math.round((d.y0 + E.mouse.y - d.start.y) / g) * g;
+        d.o.x = rg(d.x0 + M.x - d.start.x);
+        d.o.y = rg(d.y0 + M.y - d.start.y);
       } else if (d.type === 'installWall') {
         // Punkt instalacji przesuwa się wzdłuż ściany i może przejść na inną ścianę lub drugie lico.
-        const t = App.installWallTarget(lv, E.mouse, 40);
+        const t = App.installWallTarget(lv, M, 40);
         if (t) Object.assign(d.o, { wallId: t.wall.id, pos: t.pos, side: t.side });
       } else if (d.type === 'run') {
-        const dx = Math.round((E.mouse.x - d.start.x) / g) * g, dy = Math.round((E.mouse.y - d.start.y) / g) * g;
+        const dx = rg(M.x - d.start.x), dy = rg(M.y - d.start.y);
         d.o.pts.forEach((q, k) => { q.x = d.pts0[k].x + dx; q.y = d.pts0[k].y + dy; });
       } else if (d.type === 'polyVertex') {
-        const s = E.snapPoint(E.mouse, { exclude: new Set([d.o.pts[d.k]]), from: d.o.pts[(d.k + d.o.pts.length - 1) % d.o.pts.length] });
+        const s = snapAt(M, { exclude: new Set([d.o.pts[d.k]]), from: d.o.pts[(d.k + d.o.pts.length - 1) % d.o.pts.length] });
         E.snap = s;
         Object.assign(d.o.pts[d.k], { x: s.x, y: s.y });
       } else if (d.type === 'runVertex') {
-        const s = runSnap(E.mouse);
+        const s = (E.fine ? snapAt(M) : runSnap(M));
         E.snap = s;
         Object.assign(d.o.pts[d.k], { x: s.x, y: s.y });
       } else if (d.type === 'roofCorner') {
         // Narożnik przeciwległy zostaje w miejscu, obrót dachu się nie zmienia.
-        const s = E.snapPoint(E.mouse);
+        const s = snapAt(M);
         E.snap = s;
         const q = G.toLocal({ x: d.opp.x, y: d.opp.y, rot: d.o.rot }, s);
         if (Math.abs(q.a) < 20 || Math.abs(q.b) < 20) return;

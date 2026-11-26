@@ -89,6 +89,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 - Ctrl+Z: cofnij. Ctrl+Y albo Ctrl+Shift+Z: ponów.
 - Ctrl+C / Ctrl+V: kopiuj i wklej pod kursorem. Ctrl+D: duplikuj.
 - Delete: usuń zaznaczony element.
+- **Ctrl przy przeciąganiu** (ściany, narożniki, pokoje, meble, otwory): ruch 10× wolniejszy, krok 1 mm, bez przyciągania do siatki i punktów; na pasku stanu widać przesunięcie w cm. Po puszczeniu Ctrl przeciąganie toczy się dalej normalnie, bez skoku.
 - T: obróć. M: odbij lustrzanie (meble, schody).
 - Esc: przerwij rysowanie albo odznacz element.
 - Ctrl+S: zapisz projekt do pliku.
