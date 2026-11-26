@@ -350,6 +350,8 @@
     const W = 306, H = 210, dpr = window.devicePixelRatio || 1;
     const cv = h('canvas', { className: 'shape-cv' });
     cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    // Stała podpowiedź i osobna linia współrzędnych o stałej wysokości – panel nie zmienia rozmiaru przy przeciąganiu.
+    const coords = h('div', { className: 'shape-coords' }, '\u00a0');
     const info = h('div', { className: 'shape-info' }, 'Przeciągnij narożnik · klik na krawędzi – nowy narożnik · prawy klik lub dwuklik narożnika – usuń · Ctrl – co 1 mm');
     const ctx = cv.getContext('2d');
     let view = null, drag = null, hover = -1;
@@ -399,10 +401,12 @@
         ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 1.5;
         ctx.fillRect(p.x - r, p.y - r, 2 * r, 2 * r); ctx.strokeRect(p.x - r, p.y - r, 2 * r, 2 * r);
       });
-      if (drag) {
-        const q = drag.pts[drag.k], cm = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
-        info.textContent = t.hole ? `x ${cm(q.x)} · y ${cm(q.y)} cm` : `od początku ściany ${cm(q.x)} · nad podłogą ${cm(q.y)} cm`;
-      }
+      // Współrzędne przeciąganego albo wskazanego narożnika.
+      const kq = drag ? drag.k : hover;
+      if (kq >= 0 && pts[kq]) {
+        const q = pts[kq], cm = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+        coords.textContent = t.hole ? `narożnik ${kq + 1}: x ${cm(q.x)} · y ${cm(q.y)} cm` : `narożnik ${kq + 1}: od początku ściany ${cm(q.x)} · nad podłogą ${cm(q.y)} cm`;
+      } else coords.textContent = '\u00a0';
     };
     const evp = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
     const hitV = (pts, p) => pts.findIndex(q => { const s = S(q); return Math.hypot(s.x - p.x, s.y - p.y) < 8; });
@@ -457,7 +461,7 @@
       setShape(t, drag.pts);
       App.changed();
     });
-    const end = () => { if (!drag) return; drag = null; cutCommit(); info.textContent = 'Przeciągnij narożnik · klik na krawędzi – nowy narożnik · prawy klik lub dwuklik narożnika – usuń · Ctrl – co 1 mm'; draw(); };
+    const end = () => { if (!drag) return; drag = null; cutCommit(); draw(); };
     cv.addEventListener('pointerup', end);
     cv.addEventListener('pointercancel', end);
     cv.addEventListener('dblclick', (e) => { const t = cutTarget(); if (!t) return; const k = hitV(shapeOf(t), evp(e)); if (k >= 0) removeAt(k); });
@@ -474,7 +478,7 @@
       btn('⇅', 'Odbij w pionie', () => mirrorShape('y')));
     CP.shape = { draw };
     setTimeout(draw, 0);
-    return h('div', { className: 'shape-ed' }, h('h4', {}, 'Kształt'), tools, cv, info);
+    return h('div', { className: 'shape-ed' }, h('h4', {}, 'Kształt'), tools, cv, coords, info);
   }
   function renderCutPanel() {
     if (!CP.el) { CP.el = h('div', { className: 'cut-panel' }); CP.el.hidden = true; $('#views').append(CP.el); }

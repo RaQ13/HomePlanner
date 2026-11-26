@@ -217,4 +217,5 @@ button.primary:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8
 .shape-tools button { padding: 2px 7px; }
 .shape-tools input { width: 44px; }
 .shape-cv { display: block; border: 1px solid var(--border); border-radius: 5px; touch-action: none; }
-.shape-info { color: var(--muted); font-size: 11px; margin-top: 3px; min-height: 14px; }
+.shape-coords { font-size: 11px; font-weight: 600; color: #dc2626; margin-top: 3px; height: 15px; line-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shape-info { color: var(--muted); font-size: 11px; margin-top: 2px; }
