@@ -353,12 +353,15 @@
       if (Math.hypot(p.x - w.x1, p.y - w.y1) < tol) return { type: 'vertex', x: w.x1, y: w.y1, select: w.id };
       if (Math.hypot(p.x - w.x2, p.y - w.y2) < tol) return { type: 'vertex', x: w.x2, y: w.y2, select: w.id };
     }
-    for (const o of lv.openings) {
+    // Otwory nachodzące na siebie na rzucie (np. drzwi pod szerokim otworem w górze ściany): wygrywa najwęższy,
+    // żeby dało się kliknąć mniejszy; szerszy łapie się w miejscach, gdzie nic na niego nie zachodzi (albo z listy otworów).
+    const opHits = lv.openings.filter(o => {
       const w = lv.walls.find(x => x.id === o.wallId);
-      if (!w) continue;
+      if (!w) return false;
       const f = App.wallFrame(w), pr = G.project(p, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 });
-      if (pr.d < w.t / 2 + tol && Math.abs(pr.t * f.L - App.openingPos(w, o)) < o.width / 2) return { type: 'opening', obj: o, select: o.id };
-    }
+      return pr.d < w.t / 2 + tol && Math.abs(pr.t * f.L - App.openingPos(w, o)) < o.width / 2;
+    }).sort((a, b) => a.width - b.width);
+    if (opHits.length) return { type: 'opening', obj: opHits[0], select: opHits[0].id };
     for (let i = lv.objects.length - 1; i >= 0; i--) {
       const o = lv.objects[i], q = G.toLocal(o, p);
       if (Math.abs(q.a) <= o.l / 2 && Math.abs(q.b) <= o.w / 2) return { type: 'object', obj: o, select: o.id };
