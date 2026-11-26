@@ -645,6 +645,30 @@
     if (op.o.poly && op.o.poly.length >= 3) return op.o.poly.map(q => ({ x: a + q.u * (b - a), y: bottom + q.v * (top - bottom) }));
     return [{ x: a, y: bottom }, { x: b, y: bottom }, { x: b, y: top }, { x: a, y: top }];
   }
+  // Klin na wierzchu ściany pod połacią: ściana przycięta jest do niższego lica, a połać nad jej grubością rośnie
+  // ku drugiemu licu – klin wypełnia tę szczelinę (wierzch ściany skośny jak połać). faces: [[s, wys. lica −, wys. lica +]].
+  function wallWedge(g, wallMat, faces, T) {
+    if (!faces || faces.length < 2) return;
+    const pos = [], tri = (a, b, c) => { pos.push(...a, ...b, ...c, ...a, ...c, ...b); };
+    const sec = ([s, hm, hp]) => {
+      const lowSd = hm <= hp ? -1 : 1, lo = Math.min(hm, hp), hi = Math.max(hm, hp), zl = lowSd * T / 2, zh = -zl;
+      return { lowSd, d: hi - lo, A: [s, lo, zl], B: [s, lo, zh], C: [s, hi, zh] };
+    };
+    for (let k = 0; k + 1 < faces.length; k++) {
+      const p = sec(faces[k]), q = sec(faces[k + 1]);
+      if (p.d < 0.5 && q.d < 0.5) continue;
+      if (p.lowSd !== q.lowSd && p.d >= 0.5 && q.d >= 0.5) continue;
+      tri(p.A, p.C, q.C); tri(p.A, q.C, q.A); // skośny wierzch
+      tri(p.B, p.C, q.C); tri(p.B, q.C, q.B); // lico po wyższej stronie
+      if (k === 0 || sec(faces[k - 1]).d < 0.5) tri(p.A, p.B, p.C);
+      if (k + 2 === faces.length || sec(faces[k + 2]).d < 0.5) tri(q.A, q.B, q.C);
+    }
+    if (!pos.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.computeVertexNormals();
+    mesh(geo, wallMat, g);
+  }
   // Ściana z obrysu minus otwory – wypukłe kawałki wyciągnięte na grubość T.
   function wallPieces(g, wallMat, outline, holes, T) {
     slabPieces(outline, holes).forEach(pc => {
@@ -770,6 +794,7 @@
         frame(op);
       });
       wallPieces(g, wallMat, outline, holes, T);
+      wallWedge(g, wallMat, wallProfile.faces, T);
       return;
     }
     // Otwór o własnym kształcie: ściana jako obrys (z cokołem w pasach) minus otwory, w kawałkach.
@@ -834,33 +859,42 @@
 
   // Wysokość ściany wzdłuż jej osi pod połaciami poddasza: [[s, y], ...] albo null, gdy nic jej nie ścina.
   function wallProfile(i, w, f, s0, s1, Hh) {
-    const lvI = App.project.levels[i], elev = App.elevation(i), n = Math.max(2, Math.ceil((s1 - s0) / 5)), pts = [];
+    const lvI = App.project.levels[i], elev = App.elevation(i), n = Math.max(2, Math.ceil((s1 - s0) / 5)), pts = [], faces = [];
+    const levels = App.project.levels;
     let clipped = false;
     for (let k = 0; k <= n; k++) {
       const s = s0 + (s1 - s0) * k / n;
-      let top = Hh;
-      [-1, 1].forEach(sd => {
+      // Wysokość ściany osobno na każdym licu (połać nad grubą ścianą wznosi się na jej grubości).
+      const faceTop = (sd) => {
         const p = { x: w.x1 + f.ux * s + f.nx * sd * w.t / 2, y: w.y1 + f.uy * s + f.ny * sd * w.t / 2 };
-        top = Math.min(top, App.roofClipTop(i, p, w) - elev - 1);
-        // Dach leżący na ścianach tej samej kondygnacji: ściana wychodząca poza linię okapu (pod okap, gdzie połać
+        let t = Math.min(Hh, App.roofClipTop(i, p, w) - elev - 1);
+        // Dachy tej samej (zwykłej) i wyższych kondygnacji: ściana wychodząca poza linię okapu (pod okap, gdzie połać
         // już opada) kończy się pod połacią, a nie przebija jej.
-        if (!lvI.attic) lvI.roofs.forEach(r => { const hr = App.roofHeightAt(r, i, p); if (hr != null) top = Math.min(top, hr - elev - 1); });
-      });
+        for (let k2 = i; k2 < levels.length; k2++) {
+          if (k2 === i && lvI.attic) continue;
+          levels[k2].roofs.forEach(r => { const hr = App.roofHeightAt(r, k2, p); if (hr != null && hr - elev < Hh - 0.5) t = Math.min(t, hr - elev - 1); });
+        }
+        return t;
+      };
+      let hm = faceTop(-1), hp = faceTop(1);
       // Ściana pod połacią dachu tej samej kondygnacji (nie na jego szczycie): dopełniona do połaci – bez prześwitu
       // między ścianą a dachem i bez podnoszenia wysokości kondygnacji (np. ściana przybudówki pod dachem garażu).
-      if (!lvI.attic && top >= Hh - 0.5) lvI.roofs.forEach(r => {
+      if (!lvI.attic && Math.min(hm, hp) >= Hh - 0.5) lvI.roofs.forEach(r => {
         const c = { x: w.x1 + f.ux * s, y: w.y1 + f.uy * s }, q = G.toLocal(r, c), rr = r.rot * Math.PI / 180;
         // Ściana szczytowa (w poprzek kalenicy, przy końcu dachu) – szczyt dachu jest budowany osobno.
         const across = Math.abs(f.ux * Math.cos(rr) + f.uy * Math.sin(rr)) < 0.3;
         if (across && Math.abs(Math.abs(q.a) - r.l / 2) < w.t) return;
         const hs = [-1, 1].map(sd => App.roofHeightAt(r, i, { x: c.x + f.nx * sd * w.t / 2, y: c.y + f.ny * sd * w.t / 2 }));
         if (hs.some(h => h == null)) return;
-        top = Math.max(top, Math.min(...hs) - elev - 1);
+        hm = Math.max(hm, hs[0] - elev - 1); hp = Math.max(hp, hs[1] - elev - 1);
       });
+      const top = Math.min(hm, hp);
+      faces.push([s, Math.max(0, hm), Math.max(0, hp)]);
       if (Math.abs(top - Hh) > 0.5) clipped = true;
       pts.push([s, Math.max(0, top)]);
     }
     if (!clipped) return null;
+    wallProfile.faces = faces;
     // Części ściany całkiem pod połacią (poza dachem) odpadają.
     const k0 = pts.findIndex(q => q[1] > 2), k1 = pts.length - 1 - [...pts].reverse().findIndex(q => q[1] > 2);
     if (k0 < 0) return [];
