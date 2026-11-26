@@ -352,7 +352,7 @@
     cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
     // Stała podpowiedź i osobna linia współrzędnych o stałej wysokości – panel nie zmienia rozmiaru przy przeciąganiu.
     const coords = h('div', { className: 'shape-coords' }, '\u00a0');
-    const info = h('div', { className: 'shape-info' }, 'Przeciągnij narożnik · klik na krawędzi – nowy narożnik · prawy klik lub dwuklik narożnika – usuń · Ctrl – co 1 mm');
+    const info = h('div', { className: 'shape-info' }, 'Przeciągnij narożnik · klik na krawędzi – nowy narożnik · prawy klik lub dwuklik narożnika – usuń · Ctrl – precyzyjnie: 10× wolniej, co 1 mm');
     const ctx = cv.getContext('2d');
     let view = null, drag = null, hover = -1;
     const fit = (t, pts) => {
@@ -439,7 +439,9 @@
         k = ed.k + 1;
       }
       if (!CP.before) CP.before = App.snapshot();
-      drag = { k, pts };
+      // Przesunięcie między kursorem a narożnikiem – narożnik nie przeskakuje pod kursor.
+      const m0 = Wp(p);
+      drag = { k, pts, prev: m0, off: { x: pts[k].x - m0.x, y: pts[k].y - m0.y } };
       cv.setPointerCapture(e.pointerId);
       draw();
     });
@@ -453,10 +455,24 @@
         return;
       }
       const t = cutTarget(); if (!t) return;
-      const g = e.ctrlKey || e.metaKey ? 0.1 : 1, wq = Wp(p);
+      // Ctrl – jak przy przesuwaniu ścian: ruch 10× wolniejszy, krok 1 mm, bez wyrównania; po puszczeniu Ctrl bez skoku.
+      const fine = e.ctrlKey || e.metaKey, m = Wp(p);
+      if (!drag.prev) drag.prev = m;
+      if (!drag.off) drag.off = { x: 0, y: 0 };
+      let wq;
+      if (fine) {
+        if (!drag.anchor) drag.anchor = { m: drag.prev, e: { x: drag.prev.x + drag.off.x, y: drag.prev.y + drag.off.y } };
+        wq = { x: drag.anchor.e.x + (m.x - drag.anchor.m.x) * 0.1, y: drag.anchor.e.y + (m.y - drag.anchor.m.y) * 0.1 };
+        drag.off = { x: wq.x - m.x, y: wq.y - m.y };
+      } else {
+        drag.anchor = null;
+        wq = { x: m.x + drag.off.x, y: m.y + drag.off.y };
+      }
+      drag.prev = m;
+      const g = fine ? 0.1 : 1;
       let x = Math.round(wq.x / g) * g, y = Math.round(wq.y / g) * g;
-      // Wyrównanie do pozostałych narożników (w poziomie i pionie).
-      drag.pts.forEach((q, j) => { if (j === drag.k) return; if (Math.abs(q.x - x) * view.sc < 5) x = q.x; if (Math.abs(q.y - y) * view.sc < 5) y = q.y; });
+      // Wyrównanie do pozostałych narożników (w poziomie i pionie) – bez Ctrl.
+      if (!fine) drag.pts.forEach((q, j) => { if (j === drag.k) return; if (Math.abs(q.x - x) * view.sc < 5) x = q.x; if (Math.abs(q.y - y) * view.sc < 5) y = q.y; });
       drag.pts[drag.k] = { x, y };
       setShape(t, drag.pts);
       App.changed();
