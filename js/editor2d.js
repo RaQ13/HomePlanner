@@ -1150,8 +1150,6 @@
       ctx.fillStyle = App.selection === w.id ? '#1e40af' : '#2f3542';
       ctx.fill();
     });
-    lv.openings.forEach(o => drawOpening(lv, o));
-    drawOpeningDims(lv);
     lv.fences.forEach(o => drawFence(o, tech));
     // Kominy z niższych kondygnacji przechodzą przez wyższe.
     for (let i = 0; i < p.current && !only; i++) {
@@ -1159,6 +1157,9 @@
     }
     if (!only) lv.objects.forEach(o => drawObject(o, false));
     ctx.globalAlpha = 1;
+    // Otwory po schodach i meblach – drzwi pod schodami nie są przykryte.
+    lv.openings.forEach(o => drawOpening(lv, o));
+    drawOpeningDims(lv);
     if (E.instOn()) lv.installs.forEach(o => { if (E.instVisible(o)) App.drawInstall(ctx, lv, o, px(1), App.selection === o.id); });
     if (!only) lv.roofs.forEach(drawRoof);
     // Strych: obrys miejsca, w którym połać poddasza jest jeszcze nad podłogą.
