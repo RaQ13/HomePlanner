@@ -1471,6 +1471,13 @@
         from = Math.max(from, App.elevation(i + j) + App.wallHeight(l, w));
       });
     });
+    // Brak ściany w płaszczyźnie szczytu, ale pod dachem stoi ściana w poprzek kalenicy (np. ściana garażu, a koniec
+    // dachu wysunięty nad przybudówkę) – ta ściana jest dopełniona do połaci, szczyt w powietrzu byłby zbędny.
+    if (!depth && gb.plane === 'u' && lv.walls.some(w => {
+      if (w.hidden) return false;
+      const f = App.wallFrame(w), q = G.toLocal(r, { x: (w.x1 + w.x2) / 2, y: (w.y1 + w.y2) / 2 });
+      return Math.abs(f.ux * ax + f.uy * ay) < 0.3 && Math.abs(q.a) < r.l / 2 && Math.abs(q.b) <= r.w / 2 + 1;
+    })) return;
     let poly = gb.poly;
     if (depth) poly = clipAbove(poly, from);
     if (poly.length < 3) return;
