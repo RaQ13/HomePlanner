@@ -256,7 +256,7 @@
   // ---------- Edycja otworu w ścianie z podglądem ----------
   // Pływający panel dla otworu App.cutEdit (gdy jest zaznaczony): zmiany widać od razu na rzucie i w 3D, razem
   // z wymiarami; jedna zmiana pola (albo kliknięcie −/+) to jeden krok cofania.
-  const CP = { el: null, id: null, before: null, inputs: [] };
+  const CP = { el: null, id: null, before: null, inputs: [], shape: null };
   const CUT_FIELDS = [
     { key: 'width', label: 'Szerokość', min: 1, get: (D, o) => o.width, set: (o, D, v) => { const a = D.a; o.width = v; o.pos = a + v / 2; } },
     { key: 'height', label: 'Wysokość', min: 1, get: (D, o) => o.height, set: (o, D, v) => { o.height = v; } },
@@ -301,6 +301,180 @@
     const t = cutTarget();
     if (!t) return;
     CP.inputs.forEach(({ fd, input }) => { if (document.activeElement !== input) input.value = r1(fd.get(t.D, t.o)); });
+    if (CP.shape) CP.shape.draw();
+  }
+
+  // ---------- Edytor kształtu otworu ----------
+  // Kształt w centymetrach w płaszczyźnie otworu: ściana – x wzdłuż ściany od jej początku, y nad podłogą (w górę);
+  // strop – x, y rzutu (y w dół). Otwór w ścianie zapisuje prostokąt (pos, width, sill, height) i narożniki w ułamkach.
+  function shapeOf(t) {
+    if (t.hole) return t.o.pts.map(q => ({ x: q.x, y: q.y }));
+    const { a, b, sill, top } = t.D;
+    const poly = t.o.poly && t.o.poly.length >= 3 ? t.o.poly : [{ u: 0, v: 0 }, { u: 1, v: 0 }, { u: 1, v: 1 }, { u: 0, v: 1 }];
+    return poly.map(q => ({ x: a + q.u * (b - a), y: sill + q.v * (top - sill) }));
+  }
+  function setShape(t, pts) {
+    const rr = (v) => Math.round(v * 10) / 10;
+    pts = pts.map(q => ({ x: rr(q.x), y: rr(q.y) }));
+    if (t.hole) { t.o.pts = pts; return; }
+    const xs = pts.map(q => q.x), ys = pts.map(q => q.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    if (x1 - x0 < 1 || y1 - y0 < 1) return;
+    const o = t.o;
+    o.width = rr(x1 - x0); o.pos = rr((x0 + x1) / 2); o.sill = rr(y0); o.height = rr(y1 - y0);
+    const corner = (q) => (Math.abs(q.x - x0) < 0.05 || Math.abs(q.x - x1) < 0.05) && (Math.abs(q.y - y0) < 0.05 || Math.abs(q.y - y1) < 0.05);
+    if (pts.length === 4 && pts.every(corner)) delete o.poly;
+    else o.poly = pts.map(q => ({ u: +((q.x - x0) / (x1 - x0)).toFixed(5), v: +((q.y - y0) / (y1 - y0)).toFixed(5) }));
+  }
+  // Gotowe kształty w ułamkach prostokąta otworu (u w prawo, v w górę ściany / w dół rzutu).
+  const SHAPES = {
+    rect: () => [[0, 0], [1, 0], [1, 1], [0, 1]],
+    // Schodki rosnące w prawo: n stopni.
+    stairs: (n) => { const p = [[0, 0], [1, 0], [1, 1]]; for (let k = n - 1; k >= 0; k--) { p.push([k / n, (k + 1) / n]); if (k > 0) p.push([k / n, k / n]); } return p; },
+    arch: () => { const p = [[0, 0], [1, 0], [1, 0.5]]; for (let j = 1; j < 16; j++) { const t = j / 16 * Math.PI; p.push([0.5 + 0.5 * Math.cos(t), 0.5 + 0.5 * Math.sin(t)]); } p.push([0, 0.5]); return p; },
+    tri: () => [[0, 0], [1, 0], [0.5, 1]],
+  };
+  function applyShape(uv) {
+    const t = cutTarget();
+    if (!t) return;
+    const pts = shapeOf(t), xs = pts.map(q => q.x), ys = pts.map(q => q.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    // W rzucie v rośnie w dół – kształt „do góry” jak na ścianie.
+    App.edit(() => setShape(t, uv.map(([u, v]) => ({ x: x0 + u * (x1 - x0), y: t.hole ? y1 - v * (y1 - y0) : y0 + v * (y1 - y0) }))));
+  }
+  function mirrorShape(ax) {
+    const t = cutTarget();
+    if (!t) return;
+    const pts = shapeOf(t), vs = pts.map(q => q[ax]), m = Math.min(...vs) + Math.max(...vs);
+    App.edit(() => setShape(t, pts.map(q => Object.assign({}, q, { [ax]: m - q[ax] })).reverse()));
+  }
+  function shapeEditor() {
+    const W = 306, H = 210, dpr = window.devicePixelRatio || 1;
+    const cv = h('canvas', { className: 'shape-cv' });
+    cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    const info = h('div', { className: 'shape-info' }, 'Przeciągnij narożnik · klik na krawędzi – nowy narożnik · prawy klik lub dwuklik narożnika – usuń · Ctrl – co 1 mm');
+    const ctx = cv.getContext('2d');
+    let view = null, drag = null, hover = -1;
+    const fit = (t, pts) => {
+      const xs = pts.map(q => q.x), ys = pts.map(q => q.y);
+      let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const m = Math.max(30, 0.35 * Math.max(x1 - x0, y1 - y0));
+      x0 -= m; x1 += m; y0 -= m; y1 += m;
+      if (!t.hole) { x0 = Math.max(x0, t.D.s0 - 20); x1 = Math.min(x1, t.D.s1 + 20); y0 = Math.min(y0, -10); y1 = Math.max(y1, Math.min(t.D.Hh + 10, y1 + 60)); }
+      const sc = Math.min((W - 20) / (x1 - x0), (H - 20) / (y1 - y0));
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      return { sc, ox: W / 2 - cx * sc, oy: t.hole ? H / 2 - cy * sc : H / 2 + cy * sc, up: !t.hole };
+    };
+    const S = (q) => ({ x: view.ox + q.x * view.sc, y: view.up ? view.oy - q.y * view.sc : view.oy + q.y * view.sc });
+    const Wp = (p) => ({ x: (p.x - view.ox) / view.sc, y: view.up ? (view.oy - p.y) / view.sc : (p.y - view.oy) / view.sc });
+    const draw = () => {
+      const t = cutTarget();
+      if (!t) return;
+      const pts = drag ? drag.pts : shapeOf(t);
+      if (!drag) view = fit(t, pts);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = '#f8fafc'; ctx.fillRect(0, 0, W, H);
+      const poly = (ps) => { ctx.beginPath(); ps.forEach((q, k) => { const p = S(q); k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }); ctx.closePath(); };
+      if (!t.hole) {
+        // Lico ściany, podłoga i pozostałe otwory w tej ścianie.
+        const D = t.D;
+        poly([{ x: D.s0, y: 0 }, { x: D.s1, y: 0 }, { x: D.s1, y: D.Hh }, { x: D.s0, y: D.Hh }]);
+        ctx.fillStyle = '#e2e5ea'; ctx.fill(); ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 1; ctx.stroke();
+        t.lv.openings.filter(x => x.wallId === D.w.id && x.id !== t.o.id).forEach(x => {
+          const p = App.openingPos(D.w, x), sl = App.openingSill(x);
+          poly([{ x: p - x.width / 2, y: sl }, { x: p + x.width / 2, y: sl }, { x: p + x.width / 2, y: sl + x.height }, { x: p - x.width / 2, y: sl + x.height }]);
+          ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.strokeStyle = '#9ca3af'; ctx.stroke();
+        });
+        const f0 = S({ x: D.s0 - 1000, y: 0 }), f1 = S({ x: D.s1 + 1000, y: 0 });
+        ctx.strokeStyle = '#374151'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(f0.x, f0.y); ctx.lineTo(f1.x, f1.y); ctx.stroke();
+      } else {
+        // Ściany kondygnacji wokół otworu.
+        if (t.D.room) { poly(t.D.room.pts); ctx.fillStyle = '#eef2f7'; ctx.fill(); }
+        t.lv.walls.forEach(w => { poly(App.wallPolygon(t.lv, w)); ctx.fillStyle = '#4b5563'; ctx.fill(); });
+      }
+      poly(pts);
+      ctx.fillStyle = 'rgba(220,38,38,0.14)'; ctx.fill();
+      ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 1.6; ctx.stroke();
+      pts.forEach((q, k) => {
+        const p = S(q), r = k === hover || (drag && drag.k === k) ? 5 : 3.5;
+        ctx.fillStyle = k === hover || (drag && drag.k === k) ? '#dc2626' : '#ffffff';
+        ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 1.5;
+        ctx.fillRect(p.x - r, p.y - r, 2 * r, 2 * r); ctx.strokeRect(p.x - r, p.y - r, 2 * r, 2 * r);
+      });
+      if (drag) {
+        const q = drag.pts[drag.k], cm = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+        info.textContent = t.hole ? `x ${cm(q.x)} · y ${cm(q.y)} cm` : `od początku ściany ${cm(q.x)} · nad podłogą ${cm(q.y)} cm`;
+      }
+    };
+    const evp = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    const hitV = (pts, p) => pts.findIndex(q => { const s = S(q); return Math.hypot(s.x - p.x, s.y - p.y) < 8; });
+    const hitE = (pts, p) => {
+      let best = -1, bd = 7, at = null;
+      pts.forEach((q, k) => {
+        const a = S(q), b = S(pts[(k + 1) % pts.length]), dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1;
+        const u = G.clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / L2, 0, 1), d = Math.hypot(a.x + dx * u - p.x, a.y + dy * u - p.y);
+        if (d < bd) { bd = d; best = k; at = Wp({ x: a.x + dx * u, y: a.y + dy * u }); }
+      });
+      return best < 0 ? null : { k: best, at };
+    };
+    const removeAt = (k) => {
+      const t = cutTarget(); if (!t) return;
+      const pts = shapeOf(t);
+      if (pts.length <= 3) return;
+      pts.splice(k, 1);
+      App.edit(() => setShape(t, pts));
+    };
+    cv.addEventListener('contextmenu', (e) => e.preventDefault());
+    cv.addEventListener('pointerdown', (e) => {
+      const t = cutTarget(); if (!t) return;
+      const p = evp(e), pts = shapeOf(t);
+      let k = hitV(pts, p);
+      if (e.button === 2) { if (k >= 0) removeAt(k); return; }
+      if (k < 0) {
+        const ed = hitE(pts, p);
+        if (!ed) return;
+        pts.splice(ed.k + 1, 0, { x: ed.at.x, y: ed.at.y });
+        k = ed.k + 1;
+      }
+      if (!CP.before) CP.before = App.snapshot();
+      drag = { k, pts };
+      cv.setPointerCapture(e.pointerId);
+      draw();
+    });
+    cv.addEventListener('pointermove', (e) => {
+      const p = evp(e);
+      if (!drag) {
+        const t = cutTarget(); if (!t) return;
+        const pts = shapeOf(t), k = hitV(pts, p);
+        cv.style.cursor = k >= 0 ? 'move' : hitE(pts, p) ? 'copy' : 'default';
+        if (k !== hover) { hover = k; draw(); }
+        return;
+      }
+      const t = cutTarget(); if (!t) return;
+      const g = e.ctrlKey || e.metaKey ? 0.1 : 1, wq = Wp(p);
+      let x = Math.round(wq.x / g) * g, y = Math.round(wq.y / g) * g;
+      // Wyrównanie do pozostałych narożników (w poziomie i pionie).
+      drag.pts.forEach((q, j) => { if (j === drag.k) return; if (Math.abs(q.x - x) * view.sc < 5) x = q.x; if (Math.abs(q.y - y) * view.sc < 5) y = q.y; });
+      drag.pts[drag.k] = { x, y };
+      setShape(t, drag.pts);
+      App.changed();
+    });
+    const end = () => { if (!drag) return; drag = null; cutCommit(); info.textContent = 'Przeciągnij narożnik · klik na krawędzi – nowy narożnik · prawy klik lub dwuklik narożnika – usuń · Ctrl – co 1 mm'; draw(); };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener('dblclick', (e) => { const t = cutTarget(); if (!t) return; const k = hitV(shapeOf(t), evp(e)); if (k >= 0) removeAt(k); });
+    cv.addEventListener('pointerleave', () => { if (hover >= 0 && !drag) { hover = -1; draw(); } });
+    let steps = 4;
+    const stepsIn = h('input', { type: 'number', min: 2, max: 30, step: 1, value: steps, title: 'Liczba stopni', onchange: (e) => { steps = G.clamp(Math.round(+e.target.value || 4), 2, 30); e.target.value = steps; } });
+    const btn = (txt, title, fn) => h('button', { title, onclick: fn }, txt);
+    const tools = h('div', { className: 'shape-tools' },
+      btn('▭', 'Prostokąt', () => applyShape(SHAPES.rect())),
+      btn('⌐ schody', 'Schodki rosnące w prawo (liczba stopni obok)', () => applyShape(SHAPES.stairs(steps))), stepsIn,
+      btn('⌒', 'Łuk u góry', () => applyShape(SHAPES.arch())),
+      btn('△', 'Trójkąt', () => applyShape(SHAPES.tri())),
+      btn('⇆', 'Odbij w poziomie', () => mirrorShape('x')),
+      btn('⇅', 'Odbij w pionie', () => mirrorShape('y')));
+    CP.shape = { draw };
+    setTimeout(draw, 0);
+    return h('div', { className: 'shape-ed' }, h('h4', {}, 'Kształt'), tools, cv, info);
   }
   function renderCutPanel() {
     if (!CP.el) { CP.el = h('div', { className: 'cut-panel' }); CP.el.hidden = true; $('#views').append(CP.el); }
@@ -335,6 +509,8 @@
         h('button', { title: '−1 cm (Ctrl – 0,1 cm, Shift – 10 cm)', onclick: step(-1) }, '−'), input,
         h('button', { title: '+1 cm (Ctrl – 0,1 cm, Shift – 10 cm)', onclick: step(1) }, '+'), h('span', { className: 'unit' }, 'cm')));
     });
+    CP.shape = null;
+    if (t.hole || t.o.empty) CP.el.append(shapeEditor());
     if (!t.hole && t.o.empty && t.o.depth) CP.el.append(h('label', { className: 'cut-check' }, (() => { const c = h('input', { type: 'checkbox' }); c.checked = !!t.o.side; c.onchange = () => App.edit(() => { t.o.side = c.checked; }); return c; })(), ' wnęka od drugiej strony'));
     CP.el.append(h('p', { className: 'muted small' }, (t.hole ? 'Odległości w świetle – od krawędzi otworu do lic najbliższych ścian w osiach X i Y; zmiana odległości przesuwa otwór, zmiana długości / szerokości – prawą / dolną krawędź.' : 'Wymiary w świetle – od lic ścian dochodzących.')
       + ' Zmiany widać od razu na rzucie i w 3D (czerwone wymiary). −/+: 1 cm, z Ctrl 0,1 cm, z Shift 10 cm.'));

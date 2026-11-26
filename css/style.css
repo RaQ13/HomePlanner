@@ -211,3 +211,10 @@ button.primary:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8
 .cut-row .unit { color: var(--muted); font-size: 11px; }
 .cut-check { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
 .views { position: relative; }
+.shape-ed { margin-top: 8px; }
+.shape-ed h4 { margin: 0 0 4px; font-size: 12px; color: #374151; }
+.shape-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; align-items: center; }
+.shape-tools button { padding: 2px 7px; }
+.shape-tools input { width: 44px; }
+.shape-cv { display: block; border: 1px solid var(--border); border-radius: 5px; touch-action: none; }
+.shape-info { color: var(--muted); font-size: 11px; margin-top: 3px; min-height: 14px; }
