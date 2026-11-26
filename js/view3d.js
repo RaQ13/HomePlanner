@@ -97,6 +97,7 @@
     }
     if (W.on) walkStep(dt);
     else controls.update();
+    dimSides();
     renderer.render(scene, camera);
   }
 
@@ -309,6 +310,7 @@
   // Podświetlenie zaznaczonego elementu (kopia materiału, bo materiały są współdzielone).
   function highlight() {
     if (!root) return;
+    updateDims();
     root.traverse(o => {
       if (!o.isMesh) return;
       if (o.userData.baseMat) { o.material = o.userData.baseMat; delete o.userData.baseMat; }
@@ -318,6 +320,72 @@
       const hl = (x) => { x = x.clone(); if (x.emissive) { x.emissive.set('#2563eb'); x.emissiveIntensity = 0.45; } return x; };
       o.material = Array.isArray(o.material) ? o.material.map(hl) : hl(o.material);
     });
+  }
+  // Wymiary edytowanego otworu (panel „Edycja otworu”): łańcuch wzdłuż ściany i w pionie na obu licach ściany,
+  // z opisami widocznymi zawsze (bez zasłaniania przez ściany).
+  let dimGroup = null;
+  function dimLabel(text, color) {
+    const c = document.createElement('canvas'), ctx = c.getContext('2d'), fs = 44;
+    ctx.font = `600 ${fs}px system-ui, sans-serif`;
+    const tw = Math.ceil(ctx.measureText(text).width) + 24;
+    c.width = tw; c.height = fs + 20;
+    ctx.font = `600 ${fs}px system-ui, sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.strokeRect(1.5, 1.5, c.width - 3, c.height - 3);
+    ctx.fillStyle = color; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    ctx.fillText(text, c.width / 2, c.height / 2 + 2);
+    const tex = new THREE.CanvasTexture(c);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    const h = 0.11;
+    sp.scale.set(h * c.width / c.height, h, 1);
+    sp.renderOrder = 31;
+    return sp;
+  }
+  function updateDims() {
+    if (dimGroup) { scene.remove(dimGroup); dimGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); dimGroup = null; }
+    const id = App.cutEdit;
+    if (!id || App.selection !== id) return;
+    const p = App.project;
+    let i = -1, o = null;
+    p.levels.forEach((lv, k) => { const x = lv.openings.find(q => q.id === id); if (x) { i = k; o = x; } });
+    if (!o) return;
+    const lv = p.levels[i], D = App.openingDims(lv, i, o);
+    if (!D) return;
+    const { w, f } = D, T = w.t, z0 = App.elevation(i) + D.base, col = '#dc2626';
+    const lm = new THREE.LineBasicMaterial({ color: col, depthTest: false });
+    dimGroup = new THREE.Group();
+    const fmt = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+    [-1, 1].forEach(sd => {
+      const off = sd * (T / 2 + 1.5);
+      const P = (t, z, n = 0) => new THREE.Vector3((w.x1 + f.ux * t + f.nx * (off + sd * n)) / 100, (z0 + z) / 100, (w.y1 + f.uy * t + f.ny * (off + sd * n)) / 100);
+      const seg = (a, b, tickA, tickB, text, lab) => {
+        const pts = [a, b, a.clone().add(tickA), a.clone().sub(tickA), b.clone().add(tickB), b.clone().sub(tickB)];
+        const g = new THREE.BufferGeometry().setFromPoints(pts);
+        const ls = new THREE.LineSegments(g, lm);
+        ls.renderOrder = 30;
+        dimGroup.add(ls);
+        ls.userData.side = sd;
+        if (text) { const sp = dimLabel(text, col); sp.position.copy(lab || a.clone().lerp(b, 0.5)).add(new THREE.Vector3(f.nx * sd * 0.03, 0, f.ny * sd * 0.03)); sp.userData.side = sd; dimGroup.add(sp); }
+      };
+      const up = new THREE.Vector3(0, 0.05, 0), along = new THREE.Vector3(f.ux * 0.05, 0, f.uy * 0.05);
+      // Poziomo: nad otworem (albo pod nim, gdy nad nim mało miejsca).
+      const zh = D.above > 35 ? D.top + 18 : Math.max(8, D.sill - 18);
+      const ts = [D.s0, Math.max(D.s0, D.a), Math.min(D.s1, D.b), D.s1];
+      for (let k = 0; k < 3; k++) if (ts[k + 1] - ts[k] > 0.05) seg(P(ts[k], zh), P(ts[k + 1], zh), up, up, fmt(ts[k + 1] - ts[k]));
+      // Pionowo: obok prawej krawędzi otworu (albo lewej, gdy tam za mało miejsca).
+      const th = D.right > 30 ? D.b + 15 : D.a - 15;
+      const zs = [0, D.sill, D.top, D.Hh];
+      for (let k = 0; k < 3; k++) if (zs[k + 1] - zs[k] > 0.05) seg(P(th, zs[k]), P(th, zs[k + 1]), along, along, fmt(zs[k + 1] - zs[k]));
+    });
+    dimGroup.userData.wall = { x: (w.x1 + w.x2) / 200, z: (w.y1 + w.y2) / 200, nx: f.nx, nz: f.ny };
+    scene.add(dimGroup);
+    dimSides();
+  }
+  // Widoczne tylko wymiary na licu zwróconym do kamery.
+  function dimSides() {
+    if (!dimGroup) return;
+    const q = dimGroup.userData.wall, sd = (camera.position.x - q.x) * q.nx + (camera.position.z - q.z) * q.nz >= 0 ? 1 : -1;
+    dimGroup.children.forEach(c => { c.visible = c.userData.side === sd; });
   }
   V.setPick = (on) => {
     V.pick = on;
@@ -1854,6 +1922,7 @@
     cutReset();
     App.edit(() => { lv[created.list] = lv[created.list] || []; lv[created.list].push(created.obj); });
     if (sf.level !== p.current) { p.current = sf.level; App.emit('change'); }
+    if (created.list === 'openings') App.cutEdit = created.obj.id;
     App.select(created.obj.id);
   }
   // Kondygnacja w trybie ducha – z wysokości oczu nad rzędnymi kondygnacji.

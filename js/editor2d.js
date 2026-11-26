@@ -747,6 +747,7 @@
         const o = { id: App.uid(), kind: 'door', empty: true, wallId: t.wall.id, pos: t.pos, width: t.width, height: d.height, sill: d.sill || 0, flip: false, side: t.side };
         if (d.depth > 0) o.depth = d.depth;
         App.edit(() => lv.openings.push(o));
+        App.cutEdit = o.id;
         App.select(o.id);
         return;
       }
@@ -1146,6 +1147,7 @@
       ctx.fill();
     });
     lv.openings.forEach(o => drawOpening(lv, o));
+    drawOpeningDims(lv);
     lv.fences.forEach(o => drawFence(o, tech));
     // Kominy z niższych kondygnacji przechodzą przez wyższe.
     for (let i = 0; i < p.current && !only; i++) {
@@ -1484,6 +1486,23 @@
     // Tekst nad linią (po stronie „do góry” po obróceniu).
     const nx = Math.sin(ang), ny = -Math.cos(ang);
     label((a.x + b.x) / 2 + nx * px(7), (a.y + b.y) / 2 + ny * px(7), text, { angle: ang, font: '10px system-ui, sans-serif', color: col, bg: opt.bg });
+  }
+  // Zaznaczony otwór w ścianie: łańcuch wymiarów wzdłuż ściany (od lica do krawędzi, szerokość, od krawędzi do lica)
+  // po stronie pokoju oraz opis wysokości.
+  function drawOpeningDims(lv) {
+    const o = lv.openings.find(x => x.id === App.selection);
+    if (!o) return;
+    const D = App.openingDims(lv, App.project.current, o);
+    if (!D) return;
+    const { w, f } = D, T = w.t;
+    const sd = inRoom(lv, { x: (w.x1 + w.x2) / 2 + f.nx * (T / 2 + 5), y: (w.y1 + w.y2) / 2 + f.ny * (T / 2 + 5) }) ? 1 : -1, off = sd * (T / 2 + px(22));
+    const at = (t) => ({ x: w.x1 + f.ux * t + f.nx * off, y: w.y1 + f.uy * t + f.ny * off });
+    const face = (t) => ({ x: w.x1 + f.ux * t + f.nx * sd * T / 2, y: w.y1 + f.uy * t + f.ny * sd * T / 2 });
+    const col = '#dc2626', ts = [D.s0, Math.max(D.s0, D.a), Math.min(D.s1, D.b), D.s1];
+    for (let k = 0; k < 3; k++) if (ts[k + 1] - ts[k] > 0.05) dimLine(at(ts[k]), at(ts[k + 1]), { color: col, bg: 'rgba(255,255,255,0.85)', ext: [[at(ts[k]), face(ts[k])], [at(ts[k + 1]), face(ts[k + 1])]] });
+    const c = at((D.a + D.b) / 2), oo = { x: c.x + f.nx * sd * px(16), y: c.y + f.ny * sd * px(16) };
+    const fmt = (v) => fmtCm(Math.round(v * 10) / 10);
+    label(oo.x, oo.y, `dół ${fmt(D.sill)} · wys. ${fmt(o.height)} · do góry ściany ${fmt(D.above)}`, { font: '10px system-ui, sans-serif', color: col, bg: 'rgba(255,255,255,0.85)' });
   }
   // Promień od punktu o w kierunku (dx, dy) do najbliższego lica ściany kondygnacji – odległość albo Infinity.
   function wallRay(lv) {

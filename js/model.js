@@ -395,6 +395,18 @@ window.App = window.App || {};
   // Wysokość kondygnacji w budynku (od podłogi do podłogi wyżej): nie mniejsza niż jej najwyższa ściana –
   // ściany podniesione pojedynczo podnoszą strop i wyższe kondygnacje, sufit nie przecina pokoju.
   App.levelHeight = (lv) => lv.walls.reduce((m, w) => Math.max(m, w.h || 0), lv.height);
+  // Wymiary otworu w ścianie (cm): a, b – krawędzie wzdłuż osi, s0, s1 – lica ścian dochodzących na końcach (w świetle),
+  // left / right – odległość krawędzi od tych lic, base – podłoga przy otworze, sill / top – dół i góra otworu nad nią,
+  // Hh – góra ściany nad tą podłogą, above – od góry otworu do góry ściany.
+  App.openingDims = (lv, i, o) => {
+    const w = lv.walls.find(x => x.id === o.wallId);
+    if (!w) return null;
+    const f = App.wallFrame(w), pos = App.openingPos(w, o), a = pos - o.width / 2, b = pos + o.width / 2;
+    const s0 = App.wallEndConnected(lv, w, 0) ? App.wallEndExt(lv, w, 0) : 0, s1 = f.L - (App.wallEndConnected(lv, w, 1) ? App.wallEndExt(lv, w, 1) : 0);
+    const base = App.wallFloorAt(lv, i, w, G.clamp(pos, 0, f.L)).base, sill = App.openingSill(o), top = sill + o.height;
+    const Hh = App.wallHeight(lv, w) - App.wallUnderSlab(i, w) - base;
+    return { w, f, pos, a, b, s0, s1, base, sill, top, Hh, left: a - s0, right: s1 - b, above: Hh - top };
+  };
   App.wallEndConnected = (lv, w, end) => {
     const x = end ? w.x2 : w.x1, y = end ? w.y2 : w.y1;
     return lv.walls.some(o => o !== w && (near(o.x1, o.y1, x, y, 1) || near(o.x2, o.y2, x, y, 1)));

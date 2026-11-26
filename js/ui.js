@@ -253,6 +253,76 @@
   }
   const defSet = (obj, key) => (v) => { obj[key] = v; App.saveDefaults(); E.render(); };
 
+  // ---------- Edycja otworu w ścianie z podglądem ----------
+  // Pływający panel dla otworu App.cutEdit (gdy jest zaznaczony): zmiany widać od razu na rzucie i w 3D, razem
+  // z wymiarami; jedna zmiana pola (albo kliknięcie −/+) to jeden krok cofania.
+  const CP = { el: null, id: null, before: null, inputs: [] };
+  const CUT_FIELDS = [
+    { key: 'width', label: 'Szerokość', min: 1, get: (D, o) => o.width, set: (o, D, v) => { const a = D.a; o.width = v; o.pos = a + v / 2; } },
+    { key: 'height', label: 'Wysokość', min: 1, get: (D, o) => o.height, set: (o, D, v) => { o.height = v; } },
+    { key: 'left', label: 'Od lica na początku ściany', min: -1000, get: (D) => D.left, set: (o, D, v) => { o.pos = D.s0 + v + o.width / 2; } },
+    { key: 'right', label: 'Od lica na końcu ściany', min: -1000, get: (D) => D.right, set: (o, D, v) => { o.pos = D.s1 - v - o.width / 2; } },
+    { key: 'sill', label: 'Dół nad podłogą', min: -400, get: (D) => D.sill, set: (o, D, v) => { o.sill = v; } },
+    { key: 'above', label: 'Od góry otworu do góry ściany', min: 0, get: (D) => D.above, set: (o, D, v) => { o.height = Math.max(1, D.Hh - D.sill - v); } },
+    { key: 'depth', label: 'Głębokość (puste – na wylot)', min: 0, empty: true, get: (D, o) => o.depth || '', set: (o, D, v) => { if (v > 0 && v < D.w.t) o.depth = v; else delete o.depth; } },
+  ];
+  function cutTarget() {
+    const id = App.cutEdit;
+    if (!id || App.selection !== id) return null;
+    const i = App.project.current, lv = App.level(), o = lv.openings.find(x => x.id === id);
+    if (!o) return null;
+    const D = App.openingDims(lv, i, o);
+    return D ? { o, lv, i, D } : null;
+  }
+  function cutCommit() { if (CP.before) { const b = CP.before; CP.before = null; App.commit(b); } }
+  function cutApply(fd, v) {
+    const t = cutTarget();
+    if (!t || !isFinite(v)) return;
+    if (!CP.before) CP.before = App.snapshot();
+    fd.set(t.o, t.D, Math.round(v * 10) / 10);
+    App.changed();
+  }
+  const r1 = (v) => (v === '' ? '' : Math.round(v * 10) / 10);
+  function cutRefresh() {
+    const t = cutTarget();
+    if (!t) return;
+    CP.inputs.forEach(({ fd, input }) => { if (document.activeElement !== input) input.value = r1(fd.get(t.D, t.o)); });
+  }
+  function renderCutPanel() {
+    if (!CP.el) { CP.el = h('div', { className: 'cut-panel' }); CP.el.hidden = true; $('#views').append(CP.el); }
+    const t = cutTarget();
+    if (!t) { cutCommit(); CP.el.hidden = true; CP.id = null; return; }
+    if (CP.id === t.o.id && !CP.el.hidden) return cutRefresh();
+    CP.id = t.o.id;
+    CP.inputs = [];
+    CP.el.innerHTML = '';
+    CP.el.hidden = false;
+    const kind = t.o.kind === 'window' ? 'okna' : t.o.empty ? (t.o.depth ? 'wnęki' : 'otworu') : 'drzwi';
+    CP.el.append(h('div', { className: 'cut-head' }, h('b', {}, `Edycja ${kind}`), h('span', {}, wallLabel(t.lv, t.D.w)),
+      h('button', { className: 'cut-x', title: 'Zamknij panel', onclick: () => { cutCommit(); App.cutEdit = null; App.emit('select'); } }, '✕')));
+    CUT_FIELDS.forEach(fd => {
+      if (fd.key === 'depth' && !t.o.empty) return;
+      const input = h('input', { type: 'number', step: 0.1 });
+      input.value = r1(fd.get(t.D, t.o));
+      if (fd.empty) input.placeholder = 'na wylot';
+      input.addEventListener('input', () => { const v = parseFloat(String(input.value).replace(',', '.')); if (fd.empty && input.value === '') cutApply(fd, 0); else if (isFinite(v)) cutApply(fd, Math.max(fd.min, v)); });
+      input.addEventListener('change', cutCommit);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { cutCommit(); input.blur(); } });
+      // −/+: krok 1 cm, z Ctrl 0,1 cm, z Shift 10 cm.
+      const step = (sg) => (e) => {
+        const tt = cutTarget(); if (!tt) return;
+        const d = e.ctrlKey || e.metaKey ? 0.1 : e.shiftKey ? 10 : 1, cur = parseFloat(fd.get(tt.D, tt.o)) || 0;
+        cutApply(fd, Math.max(fd.min, cur + sg * d)); cutCommit(); cutRefresh();
+      };
+      CP.inputs.push({ fd, input });
+      CP.el.append(h('div', { className: 'cut-row' }, h('label', {}, fd.label),
+        h('button', { title: '−1 cm (Ctrl – 0,1 cm, Shift – 10 cm)', onclick: step(-1) }, '−'), input,
+        h('button', { title: '+1 cm (Ctrl – 0,1 cm, Shift – 10 cm)', onclick: step(1) }, '+'), h('span', { className: 'unit' }, 'cm')));
+    });
+    if (t.o.empty && t.o.depth) CP.el.append(h('label', { className: 'cut-check' }, (() => { const c = h('input', { type: 'checkbox' }); c.checked = !!t.o.side; c.onchange = () => App.edit(() => { t.o.side = c.checked; }); return c; })(), ' wnęka od drugiej strony'));
+    CP.el.append(h('p', { className: 'muted small' }, 'Wymiary w świetle – od lic ścian dochodzących. Zmiany widać od razu na rzucie i w 3D (czerwone wymiary). −/+: 1 cm, z Ctrl 0,1 cm, z Shift 10 cm.'));
+  }
+
   // ---------- Lista otworów ----------
   const cmTxt = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
   // Ściana opisana pokojami po obu stronach (albo „zewnątrz”) i długością.
@@ -360,6 +430,7 @@
         }
       }
       if (!o.empty) spec.push(...texFields(o, 'tex', o.kind === 'window' ? 'Tekstura ramy' : 'Tekstura'));
+      del.unshift(h('button', { className: 'primary', title: 'Panel z polami zmieniającymi otwór na żywo i wymiarami na rzucie i w 3D', onclick: () => { App.cutEdit = o.id; App.emit('select'); } }, 'Edycja z podglądem'));
       return form(o.kind === 'window' ? 'Okno' : o.empty ? (o.depth ? 'Wnęka w ścianie' : 'Otwór w ścianie') : o.gate ? 'Brama' : 'Drzwi', spec, [del]);
     }
     if (sel.kind === 'roof') {
@@ -1309,6 +1380,8 @@
       document.title = `${App.project.name} – Planer domu`;
     });
     App.on('select', renderProps);
+    App.on('select', renderCutPanel);
+    App.on('change', renderCutPanel);
     App.on('clipboard', renderProps);
     App.on('cursor', updateStatus);
     App.on('load', () => setTimeout(() => { App.view3d.walkStop(); E.fit(); App.view3d.frame(); }, 0));
