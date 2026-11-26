@@ -824,7 +824,7 @@
 
   // Wysokość ściany wzdłuż jej osi pod połaciami poddasza: [[s, y], ...] albo null, gdy nic jej nie ścina.
   function wallProfile(i, w, f, s0, s1, Hh) {
-    const elev = App.elevation(i), n = Math.max(2, Math.ceil((s1 - s0) / 5)), pts = [];
+    const lvI = App.project.levels[i], elev = App.elevation(i), n = Math.max(2, Math.ceil((s1 - s0) / 5)), pts = [];
     let clipped = false;
     for (let k = 0; k <= n; k++) {
       const s = s0 + (s1 - s0) * k / n;
@@ -832,6 +832,9 @@
       [-1, 1].forEach(sd => {
         const p = { x: w.x1 + f.ux * s + f.nx * sd * w.t / 2, y: w.y1 + f.uy * s + f.ny * sd * w.t / 2 };
         top = Math.min(top, App.roofClipTop(i, p, w) - elev - 1);
+        // Dach leżący na ścianach tej samej kondygnacji: ściana wychodząca poza linię okapu (pod okap, gdzie połać
+        // już opada) kończy się pod połacią, a nie przebija jej.
+        if (!lvI.attic) lvI.roofs.forEach(r => { const hr = App.roofHeightAt(r, i, p); if (hr != null) top = Math.min(top, hr - elev - 1); });
       });
       if (top < Hh - 0.5) clipped = true;
       pts.push([s, Math.max(0, top)]);
