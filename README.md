@@ -68,6 +68,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 |---|---|---|
 | Zaznacz | V | Zaznaczanie, przesuwanie, edycja wierzchołków i ścian |
 | Ściana | W | Ściany odcinkami; Enter albo prawy przycisk kończy rysowanie; Shift blokuje kąt |
+| Przestrzeń pokoju | Q | Obrys pokoju bez ścian: przeciągnij prostokąt (przyciąga do lic i narożników ścian) albo kliknij w miejsce zamknięte ścianami – obrys w licach wykryje się sam. Zaznaczony pokój: przeciąganie narożników, krawędzi i całego obrysu nie rusza ścian; klik w zaznaczony pokój – dopasowanie do lic. We właściwościach pokoju „Dopasuj do lic ścian” |
 | Pokój | R | Prostokątny pokój ze ścianami |
 | Pokój dowolny | P | Pokój o dowolnym obrysie |
 | Drzwi / Okno | D / O | Otwór w ścianie; szerokość, wysokość, parapet i próg ustawiasz we Właściwościach; „Sam otwór (bez drzwi)” – przejście albo otwór na dowolnej wysokości, bez ościeżnicy i skrzydła |

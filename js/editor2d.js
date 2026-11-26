@@ -28,6 +28,7 @@
     select: 'Kliknij element, aby go zaznaczyć i przeciągnij, aby przesunąć. Ścianę pokoju przeciągasz prostopadle – rozciąga tylko ten pokój. Narożniki ścian można przeciągać. Del – usuń, Ctrl+C / Ctrl+V – kopiuj i wklej pod kursorem, Ctrl+D – powiel. Puste tło – przesuwanie widoku.',
     wall: 'Klikaj kolejne punkty ściany. Wpisz długość w cm i Enter. Shift – kąty co 45°. Esc lub prawy klik – zakończ.',
     room: 'Przeciągnij (albo kliknij dwa przeciwległe narożniki), aby utworzyć prostokątny pokój ze ścianami.',
+    space: 'Przestrzeń pokoju (bez ścian): przeciągnij prostokąt (przyciąga do lic ścian) albo kliknij w miejsce zamknięte ścianami – obrys wykryje się sam. Zaznaczony pokój: przeciągaj narożniki, krawędzie albo cały obrys (ściany zostają); klik w zaznaczony pokój – dopasuj do lic. Ctrl – precyzyjnie.',
     poly: 'Klikaj narożniki pokoju. Kliknij pierwszy punkt lub Enter, aby zamknąć. Backspace – cofnij punkt.',
     door: 'Najedź na ścianę i kliknij, aby wstawić drzwi. Strona kursora wyznacza kierunek otwierania.',
     window: 'Najedź na ścianę i kliknij, aby wstawić okno. Opcja „W szczycie dachu” wstawia okno ponad ścianą, w trójkącie pod dachem.',
@@ -45,7 +46,7 @@
     garden: 'Wybierz roślinę lub wyposażenie ogrodu po prawej i kliknij na rzucie. T – obrót o 90°, M – odbicie.',
     roof: 'Kliknij w pokój, aby przykryć go dachem, albo przeciągnij prostokąt. Dach leży na ścianach bieżącej kondygnacji. T – obrót zaznaczonego dachu.',
   };
-  E.hint = () => HINTS[E.tool];
+  E.hint = () => E.note || HINTS[E.tool];
 
   E.toWorld = (sx, sy) => ({ x: (sx - E.ox) / E.scale, y: (sy - E.oy) / E.scale });
   E.toScreen = (x, y) => ({ x: x * E.scale + E.ox, y: y * E.scale + E.oy });
@@ -115,6 +116,7 @@
   const POLY_TOOLS = ['poly', 'plot', 'path', 'fence', 'area', 'hole'];
   E.setTool = (id) => {
     E.cancel();
+    E.note = null;
     const p = App.project;
     if (SITE_TOOLS.includes(id) && p.current !== (p.ground || 0)) App.setLevel(p.ground || 0);
     E.tool = id;
@@ -207,6 +209,7 @@
     if (E.tool === 'wall' && E.chain) { from = E.chain[E.chain.length - 1]; extra = E.chain; }
     if (E.poly) { from = E.poly[E.poly.length - 1]; extra = E.poly; }
     if ((E.tool === 'room' || E.tool === 'roof') && E.rect) from = E.rect.a;
+    if (E.tool === 'space') { E.snap = spaceSnap(E.mouse); return; }
     if (E.tool === 'install') {
       const d = App.installDef(App.defaults.install.type), g = App.project.settings.grid || 1;
       E.preview = d.shape === 'wall' ? App.installWallTarget(App.level(), E.mouse, 40) : null;
@@ -646,7 +649,7 @@
     return parts.filter(([p, q]) => q - p > 5).map(([p, q]) => [at(p), at(q)]);
   }
 
-  function createRoom(pts) {
+  function createRoom(pts, noWalls) {
     const d = App.defaults.room, lv = App.level();
     const names = new Set(lv.rooms.map(r => r.name));
     let name = d.name || 'Pokój', n = 2;
@@ -656,7 +659,7 @@
       const room = { id: App.uid(), name, color: App.ROOM_COLORS[lv.rooms.length % App.ROOM_COLORS.length], pts };
       lv.rooms.push(room);
       id = room.id;
-      if (d.makeWalls) {
+      if (d.makeWalls && !noWalls) {
         pts.forEach((a, i) => {
           const b = pts[(i + 1) % pts.length];
           uncoveredParts(lv, a, b).forEach(([p, q]) => lv.walls.push({ id: App.uid(), x1: p.x, y1: p.y, x2: q.x, y2: q.y, t: d.thickness, h: 0 }));
@@ -665,6 +668,89 @@
     });
     App.select(id);
   }
+
+  // ---------- Przestrzeń pokoju ----------
+  // Obrys pokoju niezależny od ścian: przyciąganie do narożników i lic ścian (ich obrysów) i narożników pokoi.
+  function spaceSnap(p) {
+    const lv = App.level(), tol = 10 / E.scale, g = App.project.settings.grid || 1;
+    if (E.fine) return { x: round1(p.x), y: round1(p.y), kind: 'fine' };
+    const polys = lv.walls.filter(w => !w.hidden).map(w => App.wallPolygon(lv, w));
+    let best = null, bd = tol;
+    const cand = (c) => { const d = G.dist(p, c); if (d < bd) { bd = d; best = { x: round1(c.x), y: round1(c.y), kind: 'point' }; } };
+    polys.forEach(pl => pl.forEach(cand));
+    lv.rooms.forEach(r => r.pts.forEach(cand));
+    if (best) return best;
+    let fb = null, fd = tol * 0.8;
+    polys.forEach(pl => pl.forEach((a, k) => {
+      const pr = G.project(p, a, pl[(k + 1) % pl.length]);
+      if (pr.d < fd && pr.t >= 0 && pr.t <= 1) { fd = pr.d; fb = { x: round1(pr.x), y: round1(pr.y), kind: 'wall' }; }
+    }));
+    return fb || { x: Math.round(p.x / g) * g, y: Math.round(p.y / g) * g, kind: 'grid' };
+  }
+  tools.space = {
+    down() {
+      E.note = null;
+      const lv = App.level(), p = E.mouse, tol = 8 / E.scale, sel = App.find(App.selection), room = sel && sel.kind === 'room' ? sel.obj : null;
+      const before = App.snapshot(), start = { x: p.x, y: p.y };
+      if (room) {
+        const k = room.pts.findIndex(q => G.dist(p, q) < tol);
+        if (k >= 0) { E.drag = { type: 'spVertex', before, o: room, k, start }; return; }
+        for (let k = 0; k < room.pts.length; k++) {
+          const a = room.pts[k], b = room.pts[(k + 1) % room.pts.length], pr = G.project(p, a, b), L = G.dist(a, b);
+          if (L > 1 && pr.d < tol * 0.8 && pr.t > 0.02 && pr.t < 0.98) {
+            E.drag = { type: 'spEdge', before, o: room, k, n: { x: -(b.y - a.y) / L, y: (b.x - a.x) / L }, p0: [{ x: a.x, y: a.y }, { x: b.x, y: b.y }], start };
+            return;
+          }
+        }
+      }
+      E.rect = { a: spaceSnap(p), sx: E.screen.x, sy: E.screen.y, room: App.roomAt(lv, p), inSel: !!(room && G.inside(p, room.pts)), before, start };
+    },
+    move() {
+      let d = E.drag;
+      // Przeciągnięcie wewnątrz zaznaczonego pokoju – przesuwanie całego obrysu (ściany zostają).
+      if (!d && E.rect && E.rect.inSel && Math.hypot(E.screen.x - E.rect.sx, E.screen.y - E.rect.sy) > 6) {
+        const room = App.find(App.selection).obj;
+        d = E.drag = { type: 'spMove', before: E.rect.before, o: room, pts0: room.pts.map(q => ({ x: q.x, y: q.y })), start: E.rect.start };
+        E.rect = null;
+      }
+      if (!d) return;
+      const M = dragMouse(d), g = E.fine ? 0.1 : App.project.settings.grid || 1;
+      if (d.type === 'spVertex') {
+        const sn = spaceSnap(M);
+        E.snap = sn;
+        Object.assign(d.o.pts[d.k], { x: sn.x, y: sn.y });
+      } else if (d.type === 'spEdge') {
+        const mx = (d.p0[0].x + d.p0[1].x) / 2, my = (d.p0[0].y + d.p0[1].y) / 2;
+        let t = (M.x - d.start.x) * d.n.x + (M.y - d.start.y) * d.n.y;
+        // Krawędź przyciąga się do lica ściany równoległego do niej.
+        const sn = spaceSnap({ x: mx + d.n.x * t, y: my + d.n.y * t });
+        t = sn.kind === 'wall' || sn.kind === 'point' ? (sn.x - mx) * d.n.x + (sn.y - my) * d.n.y : Math.round(t / g) * g;
+        [0, 1].forEach(j => { const q = d.o.pts[(d.k + j) % d.o.pts.length]; q.x = round1(d.p0[j].x + d.n.x * t); q.y = round1(d.p0[j].y + d.n.y * t); });
+      } else if (d.type === 'spMove') {
+        const dx = Math.round((M.x - d.start.x) / g) * g, dy = Math.round((M.y - d.start.y) / g) * g;
+        d.o.pts.forEach((q, k) => { q.x = round1(d.pts0[k].x + dx); q.y = round1(d.pts0[k].y + dy); });
+      }
+    },
+    up() {
+      const d = E.drag;
+      if (d) { E.drag = null; App.commit(d.before); return; }
+      if (!E.rect) return;
+      const r = E.rect;
+      E.rect = null;
+      if (Math.hypot(E.screen.x - r.sx, E.screen.y - r.sy) > 6) {
+        const a = r.a, b = spaceSnap(E.mouse);
+        if (Math.abs(b.x - a.x) < 20 || Math.abs(b.y - a.y) < 20) return;
+        createRoom([{ x: a.x, y: a.y }, { x: b.x, y: a.y }, { x: b.x, y: b.y }, { x: a.x, y: b.y }], true);
+        return;
+      }
+      // Klik: w niezaznaczony pokój – zaznaczenie; w zaznaczony albo poza pokojami – wykrycie przestrzeni w licach ścian.
+      if (r.room && !r.inSel) { App.select(r.room.id); return; }
+      const pts = App.detectSpace(App.level(), E.mouse);
+      if (!pts) { E.note = 'W tym miejscu obszar nie jest zamknięty ścianami (albo kliknięto w ścianę) – przeciągnij prostokąt.'; App.emit('cursor'); return; }
+      if (r.inSel) { const room = App.find(App.selection).obj; App.edit(() => { room.pts = pts; }); }
+      else createRoom(pts, true);
+    },
+  };
 
   tools.roof = {
     down() { E.rect = { a: { x: E.snap.x, y: E.snap.y }, sx: E.screen.x, sy: E.screen.y }; },
@@ -2019,13 +2105,13 @@
         }
       }
     }
-    if (t === 'room' && E.rect && s) {
+    if (E.rect && s && (t === 'room' || (t === 'space' && !E.rect.inSel))) {
       const a = E.rect.a;
       path([a, { x: s.x, y: a.y }, s, { x: a.x, y: s.y }]);
       ctx.fillStyle = 'rgba(37,99,235,0.12)';
       ctx.fill();
       ctx.strokeStyle = SEL;
-      ctx.lineWidth = px(App.defaults.room.makeWalls ? 2 : 1);
+      ctx.lineWidth = px(App.defaults.room.makeWalls && t === 'room' ? 2 : 1);
       ctx.stroke();
       const wcm = Math.abs(s.x - a.x), hcm = Math.abs(s.y - a.y);
       label((a.x + s.x) / 2, (a.y + s.y) / 2, `${fmtM(wcm)} × ${fmtM(hcm)} = ${(wcm * hcm / 10000).toFixed(2).replace('.', ',')} m²`,

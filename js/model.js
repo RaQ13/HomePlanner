@@ -700,6 +700,107 @@ window.App = window.App || {};
     return G.diffPieces(pts, holes);
   };
   App.roomNetArea = (lv, room) => App.roomNetPieces(lv, room).reduce((s, pc) => s + Math.abs(G.area(pc)), 0) / 10000;
+  // Przestrzeń pokoju wokół punktu p: obszar zamknięty licami ścian kondygnacji (wypełnianie siatki co step cm), obrys
+  // uproszczony i dociągnięty do narożników lic ścian. Zwraca wielokąt albo null (obszar niezamknięty ścianami).
+  App.detectSpace = (lv, p, step = 2) => {
+    const walls = lv.walls.filter(w => !w.hidden);
+    if (!walls.length) return null;
+    const polys = walls.map(w => App.wallPolygon(lv, w));
+    const all = polys.flat(), m = 20;
+    const x0 = Math.min(...all.map(q => q.x)) - m, y0 = Math.min(...all.map(q => q.y)) - m;
+    const nx = Math.ceil((Math.max(...all.map(q => q.x)) + m - x0) / step), ny = Math.ceil((Math.max(...all.map(q => q.y)) + m - y0) / step);
+    if (nx * ny > 4e6) return null;
+    const ci = Math.floor((p.x - x0) / step), cj = Math.floor((p.y - y0) / step);
+    if (ci <= 0 || cj <= 0 || ci >= nx - 1 || cj >= ny - 1) return null;
+    // Komórki zajęte przez ściany (środek komórki w obrysie ściany).
+    const blocked = new Uint8Array(nx * ny);
+    polys.forEach(pl => {
+      const xs = pl.map(q => q.x), ys = pl.map(q => q.y);
+      const i0 = Math.max(0, Math.floor((Math.min(...xs) - x0) / step)), i1 = Math.min(nx - 1, Math.ceil((Math.max(...xs) - x0) / step));
+      const j0 = Math.max(0, Math.floor((Math.min(...ys) - y0) / step)), j1 = Math.min(ny - 1, Math.ceil((Math.max(...ys) - y0) / step));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (G.inside({ x: x0 + (i + 0.5) * step, y: y0 + (j + 0.5) * step }, pl)) blocked[j * nx + i] = 1;
+    });
+    if (blocked[cj * nx + ci]) return null;
+    // Wypełnianie od klikniętej komórki; dojście do brzegu siatki – obszar otwarty.
+    const fill = new Uint8Array(nx * ny), queue = new Int32Array(nx * ny);
+    let qh = 0, qt = 0;
+    fill[cj * nx + ci] = 1; queue[qt++] = cj * nx + ci;
+    while (qh < qt) {
+      const k = queue[qh++], i = k % nx, j = (k - i) / nx;
+      if (i === 0 || j === 0 || i === nx - 1 || j === ny - 1) return null;
+      for (const n of [k - 1, k + 1, k - nx, k + nx]) if (!fill[n] && !blocked[n]) { fill[n] = 1; queue[qt++] = n; }
+    }
+    // Brzeg obszaru: krawędzie komórek skierowane przeciwnie do ruchu wskazówek zegara, łączone w pętle; najdłuższa – obrys.
+    const W1 = nx + 1, next = new Map();
+    const add = (a, b) => { if (!next.has(a)) next.set(a, []); next.get(a).push(b); };
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      if (!fill[j * nx + i]) continue;
+      const c00 = j * W1 + i, c10 = c00 + 1, c01 = c00 + W1, c11 = c01 + 1;
+      if (!fill[(j - 1) * nx + i]) add(c00, c10);
+      if (!fill[j * nx + i + 1]) add(c10, c11);
+      if (!fill[(j + 1) * nx + i]) add(c11, c01);
+      if (!fill[j * nx + i - 1]) add(c01, c00);
+    }
+    let best = null;
+    while (next.size) {
+      const start = next.keys().next().value, loop = [start];
+      let cur = start;
+      for (;;) {
+        const outs = next.get(cur);
+        if (!outs || !outs.length) break;
+        const nxt = outs.pop();
+        if (!outs.length) next.delete(cur);
+        if (nxt === start) break;
+        loop.push(nxt); cur = nxt;
+        if (loop.length > nx * ny) break;
+      }
+      if (!best || loop.length > best.length) best = loop;
+    }
+    if (!best || best.length < 4) return null;
+    let pts = best.map(k => ({ x: x0 + (k % W1) * step, y: y0 + Math.floor(k / W1) * step }));
+    // Uproszczenie (Douglas–Peucker) – schodki siatki na skośnych licach znikają.
+    const dp = (ps, eps) => {
+      if (ps.length < 3) return ps;
+      const a = ps[0], b = ps[ps.length - 1];
+      let im = -1, dm = 0;
+      for (let k = 1; k < ps.length - 1; k++) { const d = G.project(ps[k], a, b).d; if (d > dm) { dm = d; im = k; } }
+      if (dm <= eps) return [a, b];
+      return dp(ps.slice(0, im + 1), eps).slice(0, -1).concat(dp(ps.slice(im), eps));
+    };
+    // Pętla zamknięta: dzielona w dwóch najdalszych punktach.
+    let far = 0, fd = 0;
+    pts.forEach((q, k) => { const d = G.dist(q, pts[0]); if (d > fd) { fd = d; far = k; } });
+    pts = dp(pts.slice(0, far + 1), step * 1.1).slice(0, -1).concat(dp(pts.slice(far).concat([pts[0]]), step * 1.1).slice(0, -1));
+    // Każdy bok dociągnięty do lica ściany prawie na nim leżącego; narożniki – przecięcia sąsiednich boków.
+    const faces = polys.flatMap(pl => pl.map((q, k) => [q, pl[(k + 1) % pl.length]]));
+    const lines = pts.map((a, k) => {
+      const b = pts[(k + 1) % pts.length], L = G.dist(a, b) || 1, ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
+      let best = null, bd = step * 1.6;
+      faces.forEach(([p, q]) => {
+        const fl = G.dist(p, q);
+        if (fl < 1) return;
+        const fx = (q.x - p.x) / fl, fy = (q.y - p.y) / fl;
+        if (Math.abs(ux * fy - uy * fx) > 0.035) return;
+        const da = Math.abs((a.x - p.x) * fy - (a.y - p.y) * fx), db = Math.abs((b.x - p.x) * fy - (b.y - p.y) * fx), d = (da + db) / 2;
+        if (da < step * 1.6 && db < step * 1.6 && d < bd) { bd = d; best = { px: p.x, py: p.y, dx: fx, dy: fy }; }
+      });
+      return best || { px: a.x, py: a.y, dx: ux, dy: uy };
+    });
+    pts = pts.map((q, k) => {
+      const l1 = lines[(k - 1 + pts.length) % pts.length], l2 = lines[k], cr = l1.dx * l2.dy - l1.dy * l2.dx;
+      if (Math.abs(cr) < 0.2) return q;
+      const t = ((l2.px - l1.px) * l2.dy - (l2.py - l1.py) * l2.dx) / cr;
+      return { x: Math.round((l1.px + l1.dx * t) * 10) / 10, y: Math.round((l1.py + l1.dy * t) * 10) / 10 };
+    });
+    pts = pts.filter((q, k) => G.dist(q, pts[(k + pts.length - 1) % pts.length]) > 0.5);
+    // Punkty pośrednie na prostych (także prawie prostych – załamanie poniżej ok. 1°).
+    pts = pts.filter((q, k) => {
+      const a = pts[(k + pts.length - 1) % pts.length], b = pts[(k + 1) % pts.length];
+      const ux = q.x - a.x, uy = q.y - a.y, vx = b.x - q.x, vy = b.y - q.y, sin = Math.abs(ux * vy - uy * vx) / ((Math.hypot(ux, uy) * Math.hypot(vx, vy)) || 1);
+      return G.project(q, a, b).d > 0.3 && sin > 0.017;
+    });
+    return pts.length >= 3 && Math.abs(G.area(pts)) > 400 ? pts : null;
+  };
   // Zdublowane ściany: prawie równoległe, z osiami bliżej niż połowy grubości (jedna w drugiej) i wspólnym odcinkiem.
   // Zwraca pary { keep, drop, overlap, covered } – drop to krótsza / cieńsza; covered – leży w keep prawie w całości.
   App.duplicateWalls = (lv) => {

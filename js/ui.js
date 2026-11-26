@@ -21,6 +21,7 @@
   const TOOLS = [
     { id: 'select', name: 'Zaznacz', key: 'V', icon: svg('<path d="M5 3l14 8-6 2-3 6z"/>') },
     { id: 'wall', name: 'Ściana', key: 'W', icon: svg('<path d="M3 17h18v-4H3z" fill="currentColor" fill-opacity=".25"/><path d="M3 9h7v4"/>') },
+    { id: 'space', name: 'Przestrzeń pokoju', key: 'Q', icon: svg('<rect x="4" y="5" width="16" height="14" rx="1" stroke-dasharray="3 2"/><path d="M9 10h6v4H9z" fill="currentColor" fill-opacity=".25"/>') },
     { id: 'room', name: 'Pokój', key: 'R', icon: svg('<rect x="4" y="5" width="16" height="14" rx="1"/><path d="M4 12h6"/>') },
     { id: 'poly', name: 'Pokój dowolny', key: 'P', icon: svg('<path d="M4 6l9-2 7 7-4 9H6z"/>') },
     { id: 'door', name: 'Drzwi', key: 'D', icon: svg('<path d="M3 20h4M17 20h4M7 20V6"/><path d="M7 6a14 14 0 0 1 10 14" stroke-dasharray="2 2"/>') },
@@ -646,6 +647,13 @@
       return fm;
     }
     if (sel.kind === 'room') {
+      // Obrys pokoju dopasowany do lic ścian wokół jego środka (ściany zostają bez zmian).
+      del.unshift(h('button', { title: 'Ustaw obrys pokoju na licach ścian, które go otaczają (przestrzeń w świetle); ściany się nie zmieniają', onclick: () => {
+        const c = G.centroid(o.pts), p = G.inside(c, o.pts) ? c : o.pts.reduce((m, q) => ({ x: m.x + q.x / o.pts.length, y: m.y + q.y / o.pts.length }), { x: 0, y: 0 });
+        const pts = App.detectSpace(lv, p);
+        if (!pts) { alert('Wokół środka pokoju obszar nie jest zamknięty ścianami – popraw obrys narzędziem „Przestrzeń pokoju” (Q).'); return; }
+        App.edit(() => { o.pts = pts; });
+      } }, 'Dopasuj do lic ścian'));
       return form('Pokój', [
         { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name, set: editSet(v => { o.name = v; }) },
         { key: 'color', label: 'Kolor podłogi', type: 'color', get: () => o.color, set: editSet(v => { o.color = v; }) },
@@ -1133,6 +1141,10 @@
     if (t === 'wall') return form('Nowa ściana', [
       { key: 'dt', label: 'Grubość', unit: 'cm', min: 5, max: 100, get: () => d.wall.thickness, set: defSet(d.wall, 'thickness') },
       { key: 'dh', label: 'Wysokość', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: 'auto', get: () => d.wall.height || '', set: defSet(d.wall, 'height') },
+    ]);
+    if (t === 'space') return form('Przestrzeń pokoju', [
+      { key: 'dn', label: 'Nazwa nowego pokoju', type: 'text', get: () => d.room.name, set: defSet(d.room, 'name') },
+      { label: 'Wskazówka', type: 'info', get: () => 'Obrys pokoju bez ścian. Przeciągnij prostokąt albo kliknij w miejsce zamknięte ścianami. Zaznaczony pokój: przeciągaj narożniki, krawędzie lub cały obrys – ściany się nie ruszają; klik w niego – dopasowanie do lic ścian.' },
     ]);
     if (t === 'room' || t === 'poly') return form('Nowy pokój', [
       { key: 'dn', label: 'Nazwa', type: 'text', get: () => d.room.name, set: defSet(d.room, 'name') },
