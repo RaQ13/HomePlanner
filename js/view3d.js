@@ -668,8 +668,9 @@
       if (!up) return Hh;
       const c = { x: w.x1 + f.ux * t, y: w.y1 + f.uy * t };
       let cap = Hh;
-      [-1, 1].forEach(sd => {
-        const r = App.roomAt(up, { x: c.x + f.nx * sd * (T / 2 + 2), y: c.y + f.ny * sd * (T / 2 + 2) });
+      // Po obu stronach ściany i nad nią (ściana gruba – pokój wyżej może leżeć nad jej częścią).
+      [T / 2 + 2, T / 4, 0, -T / 4, -T / 2 - 2].forEach(o => {
+        const r = App.roomAt(up, { x: c.x + f.nx * o, y: c.y + f.ny * o });
         if (r) cap = Math.min(cap, LH - App.roomDrop(r, i + 1) - 0.6);
       });
       return cap;
@@ -682,7 +683,8 @@
       if (Math.abs(dp) < T + 30) upBreaks.push(along(p));
       if (dp * dq < 0) { const s = dp / (dp - dq); upBreaks.push(along({ x: p.x + (q.x - p.x) * s, y: p.y + (q.y - p.y) * s })); }
     }));
-    upBreaks.splice(0, upBreaks.length, ...upBreaks.filter(t => t > 0.5 && t < f.L - 0.5));
+    // Także w przedłużeniach ściany w narożnikach (od −e0 do L + e1).
+    upBreaks.splice(0, upBreaks.length, ...upBreaks.filter(t => t > -e0 + 0.5 && t < f.L + e1 - 0.5));
     // Otwory liczone od podłogi przy ścianie w ich miejscu (obniżony pokój), ściana zaczyna się od foot
     // (cokół do terenu) – oba mogą się zmieniać wzdłuż ściany.
     const floorAt = (t) => App.wallFloorAt(lv, i, w, G.clamp(t, 0, f.L));
