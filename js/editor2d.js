@@ -718,8 +718,8 @@
     const pos = kind === 'window' && d.gable ? Math.round(pr.t * f.L / 5) * 5 : G.clamp(Math.round(pr.t * f.L / 5) * 5, width / 2, f.L - width / 2);
     const sill = kind !== 'window' ? d.sill || 0 : d.gable ? App.wallHeight(lv, w) + 30 : d.sill, top = sill + d.height;
     // Otwory kolidują tylko wtedy, gdy nachodzą na siebie i w poziomie, i w pionie (okno szczytowe nad oknem garażu).
-    const ok = !lv.openings.some(o => o.wallId === w.id && Math.abs(App.openingPos(w, o) - pos) < (o.width + width) / 2 - 0.5 &&
-      App.openingSill(o) < top && sill < App.openingSill(o) + o.height);
+    // (wg prawdziwego kształtu otworów – np. obok trójkątnego otworu zmieszczą się drzwi pod jego skosem).
+    const ok = !App.openingClash(lv, w, pos, width, sill, top - sill);
     const side = (p.x - w.x1) * f.nx + (p.y - w.y1) * f.ny > 0;
     return { kind, wall: w, pos, width, sill, ok, side };
   }

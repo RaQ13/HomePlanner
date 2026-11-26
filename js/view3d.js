@@ -1937,8 +1937,7 @@
       }
       if (s1 - s0 < 5 || z1 - z0 < 5) return cutReset();
       const width = Math.round(s1 - s0), height = Math.round(z1 - z0), sill = Math.round(z0), pos = Math.round((s0 + s1) / 2);
-      const clash = lv.openings.some(o => o.wallId === w.id && Math.abs(App.openingPos(w, o) - pos) < (o.width + width) / 2 - 0.5 &&
-        App.openingSill(o) < sill + height && sill < App.openingSill(o) + o.height);
+      const clash = App.openingClash(lv, w, pos, width, sill, height);
       if (clash) { const el3 = document.getElementById('hint3d'); if (el3) el3.textContent = 'Otwór nachodzi na okno albo drzwi – wyznacz go obok (Esc – od nowa)'; return cutReset(); }
       // Wnęka otwiera się na stronę, z której patrzymy.
       const side = sf.normal.x * fr.nx + sf.normal.z * fr.ny > 0, depth = App.defaults.hole.depth || 0;

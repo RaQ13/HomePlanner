@@ -429,6 +429,31 @@ window.App = window.App || {};
     return { x0, x1, y0, y1, cx, cy, len: x1 - x0, wid: y1 - y0, room, top, thick,
       left: ray({ x: x0, y: cy }, -1, 0), right: ray({ x: x1, y: cy }, 1, 0), up: ray({ x: cx, y: y0 }, 0, -1), down: ray({ x: cx, y: y1 }, 0, 1) };
   };
+  // Obrys otworu w układzie ściany: x wzdłuż osi od początku, y nad podłogą (własny kształt albo prostokąt).
+  App.openingShape = (w, o) => {
+    const pos = App.openingPos(w, o), a = pos - o.width / 2, b = pos + o.width / 2, y0 = App.openingSill(o), y1 = y0 + o.height;
+    if (o.poly && o.poly.length >= 3) return o.poly.map(q => ({ x: a + q.u * (b - a), y: y0 + q.v * (y1 - y0) }));
+    return [{ x: a, y: y0 }, { x: b, y: y0 }, { x: b, y: y1 }, { x: a, y: y1 }];
+  };
+  // Czy dwa wielokąty zachodzą na siebie wnętrzami (samo stykanie się krawędziami – nie, z tolerancją eps).
+  G.polysOverlap = (A, B, eps = 0.5) => {
+    const inside = (p, P) => G.inside(p, P);
+    const shrink = (P) => { const c = G.centroid(P); return P.map(q => { const d = Math.hypot(q.x - c.x, q.y - c.y) || 1, k = Math.max(0, 1 - eps / d); return { x: c.x + (q.x - c.x) * k, y: c.y + (q.y - c.y) * k }; }); };
+    const a = shrink(A), b = shrink(B);
+    const cross = (p, q, r, s) => {
+      const d = (q.x - p.x) * (s.y - r.y) - (q.y - p.y) * (s.x - r.x);
+      if (Math.abs(d) < 1e-9) return false;
+      const t = ((r.x - p.x) * (s.y - r.y) - (r.y - p.y) * (s.x - r.x)) / d, u = ((r.x - p.x) * (q.y - p.y) - (r.y - p.y) * (q.x - p.x)) / d;
+      return t > 0 && t < 1 && u > 0 && u < 1;
+    };
+    for (let i = 0; i < a.length; i++) for (let j = 0; j < b.length; j++) if (cross(a[i], a[(i + 1) % a.length], b[j], b[(j + 1) % b.length])) return true;
+    return a.some(p => inside(p, b)) || b.some(p => inside(p, a)) || inside(G.centroid(a), b) || inside(G.centroid(b), a);
+  };
+  // Czy nowy otwór (prostokąt pos, width, sill, height) nachodzi na któryś otwór ściany – wg ich prawdziwych kształtów.
+  App.openingClash = (lv, w, pos, width, sill, height, ignoreId) => {
+    const R = [{ x: pos - width / 2, y: sill }, { x: pos + width / 2, y: sill }, { x: pos + width / 2, y: sill + height }, { x: pos - width / 2, y: sill + height }];
+    return lv.openings.some(o => o.wallId === w.id && o.id !== ignoreId && G.polysOverlap(R, App.openingShape(w, o)));
+  };
   App.wallEndConnected = (lv, w, end) => {
     const x = end ? w.x2 : w.x1, y = end ? w.y2 : w.y1;
     return lv.walls.some(o => o !== w && (near(o.x1, o.y1, x, y, 1) || near(o.x2, o.y2, x, y, 1)));
