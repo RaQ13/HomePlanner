@@ -914,88 +914,10 @@
     return pts;
   }
 
-  const convex = (pts) => {
-    let sg = 0;
-    for (let k = 0; k < pts.length; k++) {
-      const a = pts[k], b = pts[(k + 1) % pts.length], c = pts[(k + 2) % pts.length];
-      const cr = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
-      if (Math.abs(cr) < 1e-6) continue;
-      if (sg && Math.sign(cr) !== sg) return false;
-      sg = Math.sign(cr);
-    }
-    return true;
-  };
-  // Prosta przez a, b przycina wielokąt – zostaje strona keep (+1 lewa, -1 prawa).
-  function halfClip(poly, a, b, keep) {
-    const side = (q) => ((b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x)) * keep;
-    const out = [];
-    poly.forEach((p, k) => {
-      const q = poly[(k + 1) % poly.length], sp = side(p), sq = side(q);
-      if (sp >= 0) out.push(p);
-      if ((sp >= 0) !== (sq >= 0)) { const t = sp / (sp - sq); out.push({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }); }
-    });
-    return out;
-  }
-  // Wypukły wielokąt P bez wypukłego H – rozłączne wypukłe kawałki (otwór przecinający płytę na wylot).
-  function convexDiff(P, H) {
-    const s = Math.sign(G.area(H)) || 1, out = [];
-    let rem = P;
-    for (let k = 0; k < H.length && rem.length >= 3; k++) {
-      const a = H[k], b = H[(k + 1) % H.length];
-      const piece = halfClip(rem, a, b, -s);
-      if (!sliver(piece)) out.push(piece);
-      rem = halfClip(rem, a, b, s);
-    }
-    return out;
-  }
-  // Kawałek pomijalny: brak pola albo pasek węższy niż ok. 1 cm (resztka na styku krawędzi).
-  const sliver = (pc) => {
-    if (pc.length < 3) return true;
-    const A = Math.abs(G.area(pc)), per = pc.reduce((s, q, k) => s + Math.hypot(pc[(k + 1) % pc.length].x - q.x, pc[(k + 1) % pc.length].y - q.y), 0);
-    return A < 1 || A / per < 0.5;
-  };
-  // Podział wielokąta na wypukłe części: trójkąty łączone z sąsiadami, dopóki wynik zostaje wypukły.
-  function convexParts(pts) {
-    if (convex(pts)) return [pts];
-    const ccw = G.area(pts) > 0 ? pts : pts.slice().reverse();
-    let polys = THREE.ShapeUtils.triangulateShape(ccw.map(q => new THREE.Vector2(q.x, q.y)), [])
-      .map(t => (G.area(t.map(k => ccw[k])) > 0 ? t.slice() : t.slice().reverse()));
-    const merge = (A, B) => {
-      for (let i = 0; i < A.length; i++) {
-        const u = A[i], v = A[(i + 1) % A.length], j = B.findIndex((x, k) => x === v && B[(k + 1) % B.length] === u);
-        if (j < 0) continue;
-        // A od v do u (dookoła), potem B bez u i v.
-        const ra = [], rb = [];
-        for (let k = 0; k < A.length; k++) ra.push(A[(i + 1 + k) % A.length]);
-        for (let k = 2; k < B.length; k++) rb.push(B[(j + k) % B.length]);
-        const m = ra.concat(rb);
-        if (convex(m.map(k => ccw[k]))) return m;
-      }
-      return null;
-    };
-    for (let changed = true; changed;) {
-      changed = false;
-      outer: for (let i = 0; i < polys.length; i++) for (let j = i + 1; j < polys.length; j++) {
-        const m = merge(polys[i], polys[j]);
-        if (m) { polys[i] = m; polys.splice(j, 1); changed = true; break outer; }
-      }
-    }
-    return polys.map(p => p.map(k => ccw[k]));
-  }
-  // Płyta bez otworów: obrys dzielony na wypukłe kawałki, z których odejmowane są otwory (też dzielone na wypukłe).
-  // Otwory mogą na siebie nachodzić i dochodzić do krawędzi – kawałki nie mają dziur, krawędzie otworów to boki płyty.
-  function slabPieces(pts, holes) {
-    let pieces = convexParts(pts);
-    holes.flatMap(convexParts).forEach(H => {
-      if (H.length < 3 || Math.abs(G.area(H)) < 1) return;
-      pieces = pieces.flatMap(P => {
-        const common = G.clipConvex(P, H);
-        if (common.length < 3 || Math.abs(G.area(common)) < 1) return [P];
-        return convexDiff(P, H);
-      });
-    });
-    return pieces.filter(pc => !sliver(pc));
-  }
+  const convex = (pts) => G.convex(pts);
+  // Różnica wielokątów – wspólne funkcje modelu (G.*).
+  const convexDiff = G.convexDiff, convexParts = G.convexParts;
+  const slabPieces = (pts, holes) => G.diffPieces(pts, holes);
   // floorZ – rzędna wierzchu podłogi (cm): schody z niższej kondygnacji wycinają otwór tylko w podłodze, na którą
   // wychodzą (albo niższej); podłoga wyżej nad nimi (np. podest nad zejściem do piwnicy) zostaje pełna.
   function buildFloor(parent, pts, thick, lift, below, color, pits = [], floorZ = null) {

@@ -656,7 +656,50 @@ window.App = window.App || {};
       return { x: l1.px + l1.dx * s, y: l1.py + l1.dy * s };
     });
   };
-  App.roomNetArea = (lv, room) => Math.abs(G.area(App.roomNetPolygon(lv, room))) / 10000;
+  // Powierzchnia netto: obrys pokoju minus rzeczywiste obrysy ścian (także kilku różnych ścian na jednej krawędzi,
+  // skośnych i wchodzących w pokój) oraz – w przejściach bez ściany na krawędzi – pas do lica sąsiedniej ściany
+  // na tej krawędzi (lico ściany przechodzi przez przejście).
+  App.roomNetPieces = (lv, room) => {
+    const pts = room.pts, n = pts.length;
+    if (n < 3) return [];
+    const sign = G.area(pts) > 0 ? 1 : -1;
+    const xs = pts.map(q => q.x), ys = pts.map(q => q.y), bx0 = Math.min(...xs) - 100, bx1 = Math.max(...xs) + 100, by0 = Math.min(...ys) - 100, by1 = Math.max(...ys) + 100;
+    const walls = lv.walls.filter(w => !w.hidden && Math.max(w.x1, w.x2) > bx0 && Math.min(w.x1, w.x2) < bx1 && Math.max(w.y1, w.y2) > by0 && Math.min(w.y1, w.y2) < by1);
+    const holes = walls.map(w => App.wallPolygon(lv, w));
+    pts.forEach((a, k) => {
+      const b = pts[(k + 1) % n], L = G.dist(a, b);
+      if (L < 1) return;
+      const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L, nx = -uy * sign, ny = ux * sign;
+      // Ściany na krawędzi (prawie współliniowe): przedziały wzdłuż krawędzi i lico od strony pokoju.
+      const iv = [];
+      walls.forEach(o => {
+        const f = App.wallFrame(o);
+        if (Math.abs(f.ux * uy - f.uy * ux) > 0.03) return;
+        const t1 = (o.x1 - a.x) * ux + (o.y1 - a.y) * uy, t2 = (o.x2 - a.x) * ux + (o.y2 - a.y) * uy;
+        const lo = Math.max(0, Math.min(t1, t2)), hi = Math.min(L, Math.max(t1, t2));
+        if (hi - lo < 1) return;
+        const tm = (lo + hi) / 2, q = (tm - t1) / ((t2 - t1) || 1e-9), px = o.x1 + (o.x2 - o.x1) * q, py = o.y1 + (o.y2 - o.y1) * q;
+        const axis = (px - a.x) * nx + (py - a.y) * ny;
+        if (Math.abs(axis) > Math.max(3, o.t / 2)) return;
+        iv.push({ lo, hi, face: axis + o.t / 2 });
+      });
+      if (!iv.length) return;
+      iv.sort((p, q) => p.lo - q.lo);
+      // Luki między ścianami (i przy końcach krawędzi): pas do lica najbliższej ściany.
+      const gaps = [];
+      let cur = 0;
+      iv.forEach(v => { if (v.lo > cur + 0.5) gaps.push([cur, v.lo]); cur = Math.max(cur, v.hi); });
+      if (cur < L - 0.5) gaps.push([cur, L]);
+      gaps.forEach(([g0, g1]) => {
+        const mid = (g0 + g1) / 2, near = iv.reduce((m, v) => { const d = mid < v.lo ? v.lo - mid : mid > v.hi ? mid - v.hi : 0; return !m || d < m.d ? { d, v } : m; }, null).v;
+        if (near.face <= 0.05) return;
+        const P = (t, o) => ({ x: a.x + ux * t + nx * o, y: a.y + uy * t + ny * o });
+        holes.push([P(g0, -1), P(g1, -1), P(g1, near.face), P(g0, near.face)]);
+      });
+    });
+    return G.diffPieces(pts, holes);
+  };
+  App.roomNetArea = (lv, room) => App.roomNetPieces(lv, room).reduce((s, pc) => s + Math.abs(G.area(pc)), 0) / 10000;
   // Zdublowane ściany: prawie równoległe, z osiami bliżej niż połowy grubości (jedna w drugiej) i wspólnym odcinkiem.
   // Zwraca pary { keep, drop, overlap, covered } – drop to krótsza / cieńsza; covered – leży w keep prawie w całości.
   App.duplicateWalls = (lv) => {
@@ -730,7 +773,7 @@ window.App = window.App || {};
       }
       return c;
     };
-    const own = Math.abs(G.area(poly));
+    const own = App.roomNetArea(lv, room) * 1e4;
     const inner = lv.rooms.filter(r => r !== room && Math.abs(G.area(r.pts)) < Math.abs(G.area(room.pts))).map(r => App.roomNetPolygon(lv, r));
     const xs = poly.map(p => p.x), ys = poly.map(p => p.y), hAt = App.clearHeightFn(i);
     let sum = 0, cnt = 0;
@@ -1100,6 +1143,87 @@ window.App = window.App || {};
     }
     if (a1 - a0 < 1 || b1 - b0 < 1) return null;
     return [G.local(r, a0, b0), G.local(r, a1, b0), G.local(r, a1, b1), G.local(r, a0, b1)];
+  };
+  // ---------- Różnica wielokątów (kawałki wypukłe) ----------
+  G.convex = (pts) => {
+    let sg = 0;
+    for (let k = 0; k < pts.length; k++) {
+      const a = pts[k], b = pts[(k + 1) % pts.length], c = pts[(k + 2) % pts.length];
+      const cr = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+      if (Math.abs(cr) < 1e-6) continue;
+      if (sg && Math.sign(cr) !== sg) return false;
+      sg = Math.sign(cr);
+    }
+    return true;
+  };
+  // Prosta przez a, b przycina wielokąt – zostaje strona keep (+1 lewa, -1 prawa).
+  G.halfClip = (poly, a, b, keep) => {
+    const side = (q) => ((b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x)) * keep;
+    const out = [];
+    poly.forEach((p, k) => {
+      const q = poly[(k + 1) % poly.length], sp = side(p), sq = side(q);
+      if (sp >= 0) out.push(p);
+      if ((sp >= 0) !== (sq >= 0)) { const t = sp / (sp - sq); out.push({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }); }
+    });
+    return out;
+  };
+  // Kawałek pomijalny: brak pola albo pasek węższy niż ok. 1 cm.
+  G.sliver = (pc) => {
+    if (pc.length < 3) return true;
+    const A = Math.abs(G.area(pc)), per = pc.reduce((s, q, k) => s + Math.hypot(pc[(k + 1) % pc.length].x - q.x, pc[(k + 1) % pc.length].y - q.y), 0);
+    return A < 1 || A / per < 0.5;
+  };
+  // Wypukły P bez wypukłego H – rozłączne wypukłe kawałki.
+  G.convexDiff = (P, H) => {
+    const s = Math.sign(G.area(H)) || 1, out = [];
+    let rem = P;
+    for (let k = 0; k < H.length && rem.length >= 3; k++) {
+      const a = H[k], b = H[(k + 1) % H.length];
+      const piece = G.halfClip(rem, a, b, -s);
+      if (!G.sliver(piece)) out.push(piece);
+      rem = G.halfClip(rem, a, b, s);
+    }
+    return out;
+  };
+  // Podział wielokąta na wypukłe części: trójkąty łączone z sąsiadami, dopóki wynik zostaje wypukły.
+  G.convexParts = (pts) => {
+    if (G.convex(pts)) return [pts];
+    const ccw = G.area(pts) > 0 ? pts : pts.slice().reverse();
+    let polys = THREE.ShapeUtils.triangulateShape(ccw.map(q => new THREE.Vector2(q.x, q.y)), [])
+      .map(t => (G.area(t.map(k => ccw[k])) > 0 ? t.slice() : t.slice().reverse()));
+    const merge = (A, B) => {
+      for (let i = 0; i < A.length; i++) {
+        const u = A[i], v = A[(i + 1) % A.length], j = B.findIndex((x, k) => x === v && B[(k + 1) % B.length] === u);
+        if (j < 0) continue;
+        const ra = [], rb = [];
+        for (let k = 0; k < A.length; k++) ra.push(A[(i + 1 + k) % A.length]);
+        for (let k = 2; k < B.length; k++) rb.push(B[(j + k) % B.length]);
+        const m = ra.concat(rb);
+        if (G.convex(m.map(k => ccw[k]))) return m;
+      }
+      return null;
+    };
+    for (let changed = true; changed;) {
+      changed = false;
+      outer: for (let i = 0; i < polys.length; i++) for (let j = i + 1; j < polys.length; j++) {
+        const m = merge(polys[i], polys[j]);
+        if (m) { polys[i] = m; polys.splice(j, 1); changed = true; break outer; }
+      }
+    }
+    return polys.map(p => p.map(k => ccw[k]));
+  };
+  // Wielokąt pts bez otworów holes (mogą na siebie nachodzić i wychodzić poza obrys) – wypukłe kawałki bez dziur.
+  G.diffPieces = (pts, holes) => {
+    let pieces = G.convexParts(pts);
+    holes.flatMap(G.convexParts).forEach(H => {
+      if (H.length < 3 || Math.abs(G.area(H)) < 1) return;
+      pieces = pieces.flatMap(P => {
+        const common = G.clipConvex(P, H);
+        if (common.length < 3 || Math.abs(G.area(common)) < 1) return [P];
+        return G.convexDiff(P, H);
+      });
+    });
+    return pieces.filter(pc => !G.sliver(pc));
   };
   // Wielokąt przycięty do wnętrza wielokąta wypukłego (Sutherland–Hodgman).
   G.clipConvex = (poly, clip) => {
