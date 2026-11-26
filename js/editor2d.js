@@ -318,6 +318,15 @@
     if (sel && sel.kind === 'roof') {
       const c = G.rectCorners(sel.obj);
       for (let k = 0; k < 4; k++) if (G.dist(p, c[k]) < tol) return { type: 'roofCorner', obj: sel.obj, corner: k, select: sel.obj.id };
+      // Dach z załamaniem połaci: linię załamania i kalenicę można przeciągać.
+      if (App.roofKinked(sel.obj)) {
+        const r = sel.obj, q = G.toLocal(r, p), hl = r.l / 2 + (r.overhang || 0), prof = App.roofProfile(r);
+        if (Math.abs(q.a) <= hl) {
+          const kinkB = prof[r.kink > 0 ? 2 : 1][0], ridgeB = prof[r.kink > 0 ? 1 : 2][0];
+          if (Math.abs(q.b - kinkB) < tol * 0.8) return { type: 'roofKink', obj: r, select: r.id };
+          if (Math.abs(q.b - ridgeB) < tol * 0.8) return { type: 'roofRidge', obj: r, select: r.id };
+        }
+      }
     }
     // Wierzchołki zaznaczonej działki, nawierzchni lub ogrodzenia.
     if (sel && (sel.kind === 'plot' || sel.kind === 'path' || sel.kind === 'fence' || sel.kind === 'area')) {
@@ -494,6 +503,8 @@
         E.drag = { type: 'polyVertex', before, o: hit.obj, k: hit.k };
       } else if (hit.type === 'polyMove') {
         E.drag = { type: 'run', before, o: hit.obj, pts0: hit.obj.pts.map(q => ({ x: q.x, y: q.y })), start };
+      } else if (hit.type === 'roofKink' || hit.type === 'roofRidge') {
+        E.drag = { type: hit.type, before, o: hit.obj, start };
       } else if (hit.type === 'roofCorner') {
         const opp = G.rectCorners(hit.obj)[(hit.corner + 2) % 4];
         E.drag = { type: 'roofCorner', before, o: hit.obj, opp };
@@ -503,7 +514,8 @@
       const d = E.drag;
       if (!d) {
         E.hover = hitTest(E.mouse);
-        canvas.style.cursor = E.space ? 'grab' : E.hover ? (['vertex', 'roofCorner', 'runVertex', 'polyVertex'].includes(E.hover.type) ? 'move' : 'pointer') : 'default';
+        canvas.style.cursor = E.space ? 'grab' : E.hover ? (['vertex', 'roofCorner', 'runVertex', 'polyVertex'].includes(E.hover.type) ? 'move'
+          : E.hover.type === 'roofKink' || E.hover.type === 'roofRidge' ? (Math.abs(Math.cos(E.hover.obj.rot * Math.PI / 180)) > 0.7 ? 'ns-resize' : 'ew-resize') : 'pointer') : 'default';
         return;
       }
       const lv = App.level(), M = dragMouse(d), g = E.fine ? 0.1 : App.project.settings.grid || 1;
@@ -544,6 +556,19 @@
         const s = (E.fine ? snapAt(M) : runSnap(M));
         E.snap = s;
         Object.assign(d.o.pts[d.k], { x: s.x, y: s.y });
+      } else if (d.type === 'roofKink' || d.type === 'roofRidge') {
+        // Położenie w poprzek dachu w układzie „załamanie po stronie b < 0” (przy kink = 1 – odbicie).
+        const r = d.o, hw = r.w / 2, q = G.toLocal(r, M), bb = r.kink > 0 ? -q.b : q.b;
+        if (d.type === 'roofKink') {
+          // Szerokość dolnej części połaci (od okapu do linii załamania).
+          r.kinkW = Math.round(G.clamp(bb + hw, 20, r.w * 0.8) * 10) / 10;
+        } else {
+          // Kalenica: przy stałym spadku górnej części i stałym załamaniu zmienia się spadek dolnej części
+          // (okapy na tej samej wysokości): tg(dolny) = tg(górny) · (kw − 2·b) / kw.
+          const t = Math.tan(r.pitch * Math.PI / 180), kw = G.clamp(r.kinkW, 1, r.w * 0.8);
+          const tl = G.clamp(t * (kw - 2 * bb) / kw, Math.tan(Math.PI / 180), t);
+          r.kinkPitch = Math.round(Math.atan(tl) * 180 / Math.PI * 10) / 10;
+        }
       } else if (d.type === 'roofCorner') {
         // Narożnik przeciwległy zostaje w miejscu, obrót dachu się nie zmienia.
         const s = snapAt(M);
@@ -1433,6 +1458,15 @@
       path([b, G.local(r, -px(5), -r.w / 2 + px(24)), G.local(r, px(5), -r.w / 2 + px(24))]);
       ctx.fillStyle = ctx.strokeStyle;
       ctx.fill();
+    }
+    // Zaznaczony dach z załamaniem: uchwyty na linii załamania i kalenicy (do przeciągania).
+    if (sel && App.roofKinked(r)) {
+      const prof = App.roofProfile(r);
+      [prof[1][0], prof[2][0]].forEach(b => {
+        const q = G.local(r, 0, b);
+        ctx.beginPath(); ctx.arc(q.x, q.y, px(5), 0, Math.PI * 2);
+        ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = SEL; ctx.lineWidth = px(1.5); ctx.stroke();
+      });
     }
     const names = Object.fromEntries(App.ROOF_TYPES);
     const c = G.local(r, -r.l / 4, 0);

@@ -1418,6 +1418,8 @@
     const s = E.snap;
     $('#st-coords').textContent = s ? `x ${(s.x / 100).toFixed(2)}  y ${(s.y / 100).toFixed(2)} m` : '';
     const d = E.drag, r = d && d.type === 'move' && d.refs && d.refs[0];
+    const rk = d && (d.type === 'roofKink' || d.type === 'roofRidge') ? d.o : null;
+    const rkTxt = rk ? ` · dolna część połaci ${String(rk.kinkW).replace('.', ',')} cm (od lica ściany) · spadek dolny ${String(rk.kinkPitch).replace('.', ',')}° / górny ${rk.pitch}°` : '';
     const mv = r ? `przesunięcie ${String(Math.round((r.o[r.kx] - r.x0) * 10) / 10).replace('.', ',')} / ${String(Math.round((r.o[r.ky] - r.y0) * 10) / 10).replace('.', ',')} cm` : '';
     // Tryb dewelopera: element pod kursorem (rzut albo 3D).
     if (App.dev) {
@@ -1427,7 +1429,7 @@
       $('#st-coords').textContent = (s ? `x ${(s.x / 100).toFixed(3)}  y ${(s.y / 100).toFixed(3)} m  ` : '') + dv;
     }
     $('#st-hint').textContent = E.typed ? `Długość: ${E.typed} cm — Enter, aby zatwierdzić`
-      : d && d.type !== 'pan' ? (E.fine ? 'Ctrl – precyzyjnie: ruch 10× wolniejszy, krok 1 mm, bez przyciągania' : 'Przytrzymaj Ctrl – przesuwanie co 1 mm') + (mv ? ' · ' + mv : '')
+      : d && d.type !== 'pan' ? (E.fine ? 'Ctrl – precyzyjnie: ruch 10× wolniejszy, krok 1 mm, bez przyciągania' : 'Przytrzymaj Ctrl – przesuwanie co 1 mm') + (mv ? ' · ' + mv : '') + rkTxt
       : E.hint();
     $('#st-zoom').textContent = Math.round(E.scale * 100 / 0.6) + '%';
     $('#btn-undo').disabled = !App.canUndo();

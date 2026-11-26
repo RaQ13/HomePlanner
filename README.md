@@ -91,6 +91,7 @@ Przeciągnij ludzika z prawego dolnego rogu widoku 3D do pokoju albo na działk�
 - Delete: usuń zaznaczony element.
 - **Ctrl przy przeciąganiu** (ściany, narożniki, pokoje, meble, otwory): ruch 10× wolniejszy, krok 1 mm, bez przyciągania do siatki i punktów; na pasku stanu widać przesunięcie w cm. Po puszczeniu Ctrl przeciąganie toczy się dalej normalnie, bez skoku.
 - **Dev** (górne menu) – tryb dewelopera: we Właściwościach ID, rodzaj i kondygnacja zaznaczonego elementu, jego surowe dane w JSON (edycja + „Zastosuj”, kopiowanie) i wartości liczone przez model (np. długość i połączenia ściany, wymiary otworu, pola pokoju, rozkład schodów); na pasku stanu element pod kursorem na rzucie i w 3D.
+- **Dach z załamaniem połaci** (zaznaczony): linię załamania i kalenicę przeciąga się za kółka na rzucie – załamanie zmienia szerokość dolnej części połaci, kalenica – spadek dolnej części (okapy zostają na jednej wysokości); wartości na pasku stanu, Ctrl – precyzyjnie.
 - T: obróć. M: odbij lustrzanie (meble, schody).
 - Esc: przerwij rysowanie albo odznacz element.
 - Ctrl+S: zapisz projekt do pliku.
