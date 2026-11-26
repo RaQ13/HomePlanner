@@ -253,6 +253,56 @@
   }
   const defSet = (obj, key) => (v) => { obj[key] = v; App.saveDefaults(); E.render(); };
 
+  // ---------- Tryb dewelopera ----------
+  // Identyfikator, rodzaj, kondygnacja, surowe dane (JSON – do skopiowania albo edycji) i wartości liczone przez model.
+  try { App.dev = localStorage.getItem('planer.dev') === '1'; } catch (e) { App.dev = false; }
+  const devJSON = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && x.id && k && k !== 'tex' && !Array.isArray(x) && x !== v ? `#${x.id}` : typeof x === 'number' ? Math.round(x * 1000) / 1000 : x), 2)
+    // Krótkie tablice i obiekty z samych liczb / tekstów w jednej linii.
+    .replace(/\[\s+([^\[\]{}]*?)\s+\]/g, (m, inner) => '[' + inner.replace(/\s*\n\s*/g, ' ') + ']')
+    .replace(/\{\s+([^\[\]{}]{0,80}?)\s+\}/g, (m, inner) => '{ ' + inner.replace(/\s*\n\s*/g, ' ') + ' }');
+  function devComputed(lv, i, kind, o) {
+    const r = {};
+    const T = (fn) => { try { return fn(); } catch (e) { return 'błąd: ' + e.message; } };
+    if (kind === 'wall') Object.assign(r, T(() => { const f = App.wallFrame(o); return { długość: f.L, kierunek: [f.ux, f.uy], normalna: [f.nx, f.ny], przedłużenie_początek: App.wallEndExt(lv, o, 0), przedłużenie_koniec: App.wallEndExt(lv, o, 1),
+      połączona_początek: App.wallEndConnected(lv, o, 0), połączona_koniec: App.wallEndConnected(lv, o, 1), wysokość: App.wallHeight(lv, o), pod_stropem: App.wallUnderSlab(i, o), wys_kondygnacji: App.levelHeight(lv),
+      podłoga_przy_środku: App.wallFloorAt(lv, i, o, f.L / 2), otwory: lv.openings.filter(x => x.wallId === o.id).map(x => x.id), obrys: App.wallPolygon(lv, o) }; }));
+    if (kind === 'opening') r.wymiary = T(() => App.openingDims(lv, i, o));
+    if (kind === 'area' && o.surf === 'hole') r.wymiary = T(() => App.holeDims(lv, i, o));
+    if (kind === 'area' || kind === 'room' || kind === 'plot' || kind === 'path') r.pole_m2 = T(() => Math.abs(G.area(o.pts)) / 1e4);
+    if (kind === 'room') Object.assign(r, T(() => ({ obniżenie: App.roomDrop(o, i), płyta: App.roomFloor(i, o), pow_netto_m2: App.roomNetArea(lv, o), pow_użytkowa_m2: App.roomUsableArea(i, o),
+      rzędna_podłogi: App.elevation(i) - App.roomDrop(o, i), garaż: App.isGarage(o), pomocnicze: App.isAux(o) })));
+    if (kind === 'object' && o.kind === 'stairs') Object.assign(r, T(() => { const lay = App.stairLayout(o); return { stopni: lay.N, obniżenie_początku: App.stairDrop(lv, i, o), wysokość: App.stairHeight(o, lv, i), wysokość_stopnia: App.stairHeight(o, lv, i) / lay.N, części: lay.parts }; }));
+    r.kondygnacja = { indeks: i, nazwa: lv.name, id: lv.id, rzędna: App.elevation(i), wysokość: App.levelHeight(lv) };
+    return r;
+  }
+  function devBox(sel) {
+    const p = App.project, i = p.current, lv = p.levels[i], o = sel.obj;
+    const copy = (txt) => { try { navigator.clipboard.writeText(txt); } catch (e) { /* ignoruj */ } };
+    const box = h('div', { className: 'dev-box' }, h('h4', {}, 'Tryb dewelopera'));
+    box.append(h('div', { className: 'dev-row' }, h('span', {}, 'ID'), h('code', {}, o.id || '–'), h('button', { className: 'small', title: 'Kopiuj ID', onclick: () => copy(o.id) }, 'Kopiuj')));
+    box.append(h('div', { className: 'dev-row' }, h('span', {}, 'Rodzaj'), h('code', {}, sel.kind + (o.kind && o.kind !== sel.kind ? ' / ' + o.kind : '') + (o.surf ? ' / ' + o.surf : ''))));
+    box.append(h('div', { className: 'dev-row' }, h('span', {}, 'Kondygnacja'), h('code', {}, `${i} · ${lv.name} · ${lv.id}`)));
+    // Surowe dane – edycja po zatwierdzeniu (id zostaje).
+    const ta = h('textarea', { className: 'dev-json', spellcheck: false });
+    ta.value = JSON.stringify(o, null, 2);
+    const msg = h('span', { className: 'dev-msg' });
+    box.append(h('h5', {}, 'Właściwości (JSON)'), ta, h('div', { className: 'dev-actions' },
+      h('button', { className: 'small', onclick: () => { try { const v = JSON.parse(ta.value); App.edit(() => { Object.keys(o).forEach(k => { if (k !== 'id') delete o[k]; }); Object.assign(o, v, { id: o.id }); }); msg.textContent = 'zastosowano'; } catch (e) { msg.textContent = 'błąd JSON: ' + e.message; } } }, 'Zastosuj'),
+      h('button', { className: 'small', onclick: () => copy(ta.value) }, 'Kopiuj JSON'), msg));
+    const comp = h('pre', { className: 'dev-pre' }, devJSON(devComputed(lv, i, sel.kind, o)));
+    box.append(h('h5', {}, 'Wartości liczone'), comp);
+    return box;
+  }
+  function devProjectBox() {
+    const p = App.project, lv = App.level();
+    const box = h('div', { className: 'dev-box' }, h('h4', {}, 'Tryb dewelopera'));
+    box.append(h('pre', { className: 'dev-pre' }, devJSON({ kondygnacja: { indeks: p.current, id: lv.id, nazwa: lv.name, rzędna: App.elevation(p.current) },
+      liczby: Object.fromEntries(['walls', 'rooms', 'openings', 'objects', 'roofs', 'areas', 'installs'].map(k => [k, (lv[k] || []).length])),
+      parter: p.ground, podniesienie: p.lift, zaznaczenie: App.selection, edycja_otworu: App.cutEdit || null })));
+    box.append(h('p', { className: 'muted small' }, 'Kliknij element na rzucie albo w 3D (Zaznaczanie), aby zobaczyć jego ID i właściwości. Element pod kursorem – na pasku stanu.'));
+    return box;
+  }
+
   // ---------- Edycja otworu w ścianie z podglądem ----------
   // Pływający panel dla otworu App.cutEdit (gdy jest zaznaczony): zmiany widać od razu na rzucie i w 3D, razem
   // z wymiarami; jedna zmiana pola (albo kliknięcie −/+) to jeden krok cofania.
@@ -1226,6 +1276,7 @@
     box.innerHTML = '';
     const sel = App.find(App.selection);
     box.append((sel && selectionForm(sel)) || toolForm() || summary());
+    if (App.dev) box.append(sel ? devBox(sel) : devProjectBox());
     if (sel && sel.obj.hidden) box.firstChild && box.firstChild.insertBefore(h('p', { className: 'muted' }, 'Element ukryty – nie ma go w modelu 3D ani na rysunku. „Pokaż” albo H przywraca.'), box.firstChild.children[1] || null);
     if (focused) {
       const el = box.querySelector(`[data-key="${CSS.escape(focused)}"]`);
@@ -1368,6 +1419,13 @@
     $('#st-coords').textContent = s ? `x ${(s.x / 100).toFixed(2)}  y ${(s.y / 100).toFixed(2)} m` : '';
     const d = E.drag, r = d && d.type === 'move' && d.refs && d.refs[0];
     const mv = r ? `przesunięcie ${String(Math.round((r.o[r.kx] - r.x0) * 10) / 10).replace('.', ',')} / ${String(Math.round((r.o[r.ky] - r.y0) * 10) / 10).replace('.', ',')} cm` : '';
+    // Tryb dewelopera: element pod kursorem (rzut albo 3D).
+    if (App.dev) {
+      const hv = E.hover && E.hover.select, f = hv && App.find(hv);
+      const t3 = App.devHover3d;
+      const dv = f ? `[dev] ${f.kind}${f.obj.kind ? '/' + f.obj.kind : ''} ${hv}${f.obj.name ? ' „' + f.obj.name + '”' : ''}` : t3 ? `[dev 3D] ${t3}` : '[dev] –';
+      $('#st-coords').textContent = (s ? `x ${(s.x / 100).toFixed(3)}  y ${(s.y / 100).toFixed(3)} m  ` : '') + dv;
+    }
     $('#st-hint').textContent = E.typed ? `Długość: ${E.typed} cm — Enter, aby zatwierdzić`
       : d && d.type !== 'pan' ? (E.fine ? 'Ctrl – precyzyjnie: ruch 10× wolniejszy, krok 1 mm, bez przyciągania' : 'Przytrzymaj Ctrl – przesuwanie co 1 mm') + (mv ? ' · ' + mv : '')
       : E.hint();
@@ -1457,6 +1515,10 @@
     $('#btn-open').onclick = () => $('#file-input').click();
     $('#file-input').onchange = (e) => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ''; };
     $('#btn-save').onclick = saveFile;
+    const devBtn = $('#btn-dev');
+    const setDev = (on) => { App.dev = on; devBtn.classList.toggle('active', on); try { localStorage.setItem('planer.dev', on ? '1' : '0'); } catch (e) { /* ignoruj */ } renderProps(); updateStatus(); };
+    devBtn.onclick = () => setDev(!App.dev);
+    setDev(!!App.dev);
     $('#btn-png').onclick = () => {
       const mode = $('#views').dataset.mode;
       if (mode === '3d') { const u = App.view3d.screenshot(); if (u) download(u, fileName('_3d.png')); }

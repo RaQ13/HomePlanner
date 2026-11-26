@@ -303,6 +303,8 @@
       App.select(pk.id);
     });
     el.addEventListener('pointermove', (e) => {
+      // Tryb dewelopera: element pod kursorem w 3D (identyfikator na pasku stanu).
+      if (App.dev && !e.buttons) { const pk = hitAt(e); const id = pk ? pk.id + '@' + pk.level : null; if (id !== App.devHover3d) { App.devHover3d = id; App.emit('cursor'); } }
       if (!V.pick || e.buttons) return;
       el.style.cursor = hitAt(e) ? 'pointer' : 'default';
     });
