@@ -515,7 +515,15 @@
         const lift = (i === 0 ? 1 : 0.5) - fl.drop;
         // Fragmenty podłogi obniżone (wnęka, np. brodzik) – otwór w płycie podłogi pokoju.
         // Otwory w podłodze (fragment „otwór na wylot”, np. szyb schodów) – też tylko otwór.
-        const pits = lv.areas.filter(a => a.pts.length >= 3 && (a.surf === 'hole' || (a.surf !== 'ceil' && a.drop > 0)) && G.inside(G.centroid(a.pts), r.pts)).map(a => a.pts);
+        const pits = lv.areas.filter(a => a.pts.length >= 3 && !a.ceil && (a.surf === 'hole' || (a.surf !== 'ceil' && a.drop > 0)) && G.inside(G.centroid(a.pts), r.pts)).map(a => a.pts);
+        // Własny sufit pokoju: płyta z otworami „w suficie” (Utwórz otwór), zaznaczana razem z pokojem.
+        const cl = App.roomCeiling(lv, i, r);
+        if (cl && !only) {
+          const holes = lv.areas.filter(a => a.surf === 'hole' && a.ceil && a.pts.length >= 3 && G.inside(G.centroid(a.pts), r.pts)).map(a => a.pts);
+          const cobjs = tagged(g, r.id, i, () => buildFloor(g, outline, cl.thick, cl.top, null, '#ecebe6', holes));
+          cobjs.forEach(m => { if (m.isMesh) m.userData.ceilSlab = true; });
+          if (r.texCeil) applyTexture(cobjs.filter(o => o.isMesh), r.texCeil, g, (n) => n.y < -0.5);
+        }
         // Pokój leżący w środku (np. podest w klatce) na tej samej albo wyższej podłodze ma własną płytę – pod nim
         // płyty pokoju zewnętrznego nie ma (zostaje miejsce np. na zejście do piwnicy pod podestem).
         const ra = Math.abs(G.area(r.pts)), onEdge = (v) => r.pts.some((q, k) => G.project(v, q, r.pts[(k + 1) % r.pts.length]).d < 1);
@@ -534,7 +542,7 @@
       });
       // Fragmenty podłogi (warstwa / podest na podłodze) i sufitu (pod stropem, ewentualnie obniżone).
       if (!only) lv.areas.forEach(o => {
-        if (o.pts.length < 3 || (o.surf === 'hole' && !(o.depth > 0))) return;
+        if (o.pts.length < 3 || (o.surf === 'hole' && (o.ceil || !(o.depth > 0)))) return;
         // Sufit nad pokojem nie zasłania widoku z góry, gdy kondygnacja wyżej jest ukryta.
         if (o.surf === 'ceil' && i === last && i < n - 1) return;
         const c = G.centroid(o.pts), thick = Math.max(0.5, o.thick || 1), lift = Math.max(0, o.lift || 0);
@@ -1888,7 +1896,7 @@
     if (!f) return null;
     const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
     if (f.kind === 'wall' && Math.abs(ny) < 0.5) return { type: 'wall', level: pk.level, wall: f.obj, normal: n, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(n, h.point), point: h.point.clone() };
-    if (f.kind === 'room' && Math.abs(ny) > 0.5) return { type: 'slab', level: pk.level, normal: n, plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -h.point.y), point: h.point.clone() };
+    if (f.kind === 'room' && Math.abs(ny) > 0.5) return { type: 'slab', level: pk.level, ceil: !!h.object.userData.ceilSlab, normal: n, plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -h.point.y), point: h.point.clone() };
     return null;
   }
   function cutPointAt(ray) {
@@ -1972,7 +1980,8 @@
       else if (pts.length === 2) { const [a, b] = pts; pts = [{ x: a.x, y: a.y }, { x: b.x, y: a.y }, { x: b.x, y: b.y }, { x: a.x, y: b.y }]; }
       if (Math.abs(G.area(pts)) < 25) return cutReset();
       created = { list: 'areas', obj: App.makeArea(pts, 'hole') };
-      if (App.defaults.hole.depth > 0 && sf.type === 'slab' && sf.normal.y > 0) created.obj.depth = App.defaults.hole.depth;
+      if (sf.ceil) { created.obj.ceil = true; created.obj.name = 'Otwór w suficie'; }
+      if (App.defaults.hole.depth > 0 && sf.type === 'slab' && sf.normal.y > 0 && !sf.ceil) created.obj.depth = App.defaults.hole.depth;
     }
     cutReset();
     App.edit(() => { lv[created.list] = lv[created.list] || []; lv[created.list].push(created.obj); });

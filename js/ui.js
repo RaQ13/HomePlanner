@@ -555,12 +555,12 @@
     CP.inputs = [];
     CP.el.innerHTML = '';
     CP.el.hidden = false;
-    const kind = t.hole ? (t.o.depth > 0 ? 'wnęki w podłodze' : 'otworu w stropie') : t.o.kind === 'window' ? 'okna' : t.o.empty ? (t.o.depth ? 'wnęki' : 'otworu') : 'drzwi';
+    const kind = t.hole ? (t.o.ceil ? 'otworu w suficie' : t.o.depth > 0 ? 'wnęki w podłodze' : 'otworu w stropie') : t.o.kind === 'window' ? 'okna' : t.o.empty ? (t.o.depth ? 'wnęki' : 'otworu') : 'drzwi';
     const where = t.hole ? (t.D.room ? t.D.room.name : 'poza pokojami') + (t.o.pts.length !== 4 ? ` · ${t.o.pts.length} narożn.` : '') : wallLabel(t.lv, t.D.w);
     CP.el.append(h('div', { className: 'cut-head' }, h('b', {}, `Edycja ${kind}`), h('span', {}, where),
       h('button', { className: 'cut-x', title: 'Zamknij panel', onclick: () => { cutCommit(); App.cutEdit = null; App.emit('select'); } }, '✕')));
     (t.hole ? HOLE_FIELDS : CUT_FIELDS).forEach(fd => {
-      if (fd.key === 'depth' && !t.hole && !t.o.empty) return;
+      if (fd.key === 'depth' && ((!t.hole && !t.o.empty) || (t.hole && t.o.ceil))) return;
       if (t.hole && fd.get(t.D, t.o) === '' && !fd.empty) return; // brak ściany w tym kierunku
       const input = h('input', { type: 'number', step: 0.1 });
       input.value = r1(fd.get(t.D, t.o));
@@ -604,7 +604,7 @@
   }
   function holeText(lv, a) {
     const xs = a.pts.map(q => q.x), ys = a.pts.map(q => q.y), c = G.centroid(a.pts), r = App.roomAt(lv, c);
-    return { title: `${a.depth > 0 ? 'Wnęka w podłodze' : 'Otwór w stropie'} ${cmTxt(Math.max(...xs) - Math.min(...xs))} × ${cmTxt(Math.max(...ys) - Math.min(...ys))} cm`,
+    return { title: `${a.ceil ? 'Otwór w suficie' : a.depth > 0 ? 'Wnęka w podłodze' : 'Otwór w stropie'} ${cmTxt(Math.max(...xs) - Math.min(...xs))} × ${cmTxt(Math.max(...ys) - Math.min(...ys))} cm`,
       sub: [a.pts.length !== 4 ? `${a.pts.length} narożn.` : '', a.depth > 0 ? `gł. ${cmTxt(a.depth)}` : '', r ? r.name : 'poza pokojami',
         `środek ${cmTxt(Math.round(c.x))}; ${cmTxt(Math.round(c.y))}`].filter(Boolean).join(', ') };
   }
@@ -653,6 +653,12 @@
         { key: 'garage', label: 'Garaż (w podsumowaniu osobno)', type: 'checkbox', get: () => App.isGarage(o), set: editSet(v => { o.garage = v; }) },
         { key: 'aux', label: 'Pomieszczenie pomocnicze (poza pow. użytkową)', type: 'checkbox', get: () => !!o.aux, set: editSet(v => { o.aux = v; }) },
         o.atGround ? null : { key: 'drop', label: 'Podłoga niżej o', unit: 'cm', min: 0, max: 600, get: () => o.drop || 0, set: editSet(v => { o.drop = v; }) },
+        // Własny sufit (np. przybudówka bez kondygnacji nad nią): płyta z otworami z narzędzia „Utwórz otwór”.
+        { key: 'ceil', label: 'Sufit (własny strop pokoju)', type: 'checkbox', get: () => !!o.ceil, set: editSet(v => { o.ceil = v; if (v && !o.ceilT) o.ceilT = 20; }) },
+        o.ceil ? { key: 'ceilH', label: '– wysokość sufitu (od podłogi)', unit: 'cm', min: 100, max: 1000, allowEmpty: true,
+          placeholder: String(Math.round(App.roomCeiling(lv, App.project.current, o).h)), get: () => o.ceilH || '', set: editSet(v => { if (v > 0) o.ceilH = v; else delete o.ceilH; }) } : null,
+        o.ceil ? { key: 'ceilT', label: '– grubość stropu', unit: 'cm', min: 1, max: 100, get: () => o.ceilT || 20, set: editSet(v => { o.ceilT = v; }) } : null,
+        o.ceil ? { label: '– rzędna wierzchu stropu', type: 'info', get: () => ((App.elevation(App.project.current) + App.roomCeiling(lv, App.project.current, o).top) / 100).toFixed(2).replace('.', ',') + ' m' } : null,
         { label: 'Rzędna podłogi', type: 'info', get: () => ((App.elevation(App.project.current) - App.roomDrop(o, App.project.current)) / 100).toFixed(2).replace('.', ',') + ' m' },
         { label: 'Pow. netto', type: 'info', get: () => App.roomNetArea(lv, o).toFixed(2).replace('.', ',') + ' m²' },
         { label: 'Pow. użytkowa', type: 'info', get: () => App.roomUsableArea(App.project.current, o).toFixed(2).replace('.', ',') + ' m²' },
@@ -856,12 +862,13 @@
         const scale = (ax, v) => { const b = bb(), c = ax === 'x' ? (b.x0 + b.x1) / 2 : (b.y0 + b.y1) / 2, L = ax === 'x' ? b.x1 - b.x0 : b.y1 - b.y0; if (L < 0.01) return; o.pts.forEach(q => { q[ax] = c + (q[ax] - c) * v / L; }); };
         const move = (ax, v) => { const b = bb(), c = ax === 'x' ? (b.x0 + b.x1) / 2 : (b.y0 + b.y1) / 2; o.pts.forEach(q => { q[ax] += v - c; }); };
         del.unshift(h('button', { className: 'primary', title: 'Panel z polami zmieniającymi otwór na żywo i wymiarami na rzucie i w 3D', onclick: () => { App.cutEdit = o.id; App.emit('select'); } }, 'Edycja z podglądem'));
-        return form(o.depth > 0 ? 'Wnęka w podłodze' : 'Otwór w stropie', [
+        return form(o.ceil ? 'Otwór w suficie' : o.depth > 0 ? 'Wnęka w podłodze' : 'Otwór w stropie', [
           { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name || '', set: editSet(v => { o.name = v; }) },
           surf,
+          { key: 'ceilHole', label: 'W suficie pokoju (nie w podłodze)', type: 'checkbox', get: () => !!o.ceil, set: editSet(v => { if (v) { o.ceil = true; delete o.depth; } else delete o.ceil; }) },
           { key: 'bl', label: 'Długość (oś X)', unit: 'cm', min: 1, max: 5000, get: () => Math.round(bb().x1 - bb().x0), set: editSet(v => scale('x', v)) },
           { key: 'bw', label: 'Szerokość (oś Y)', unit: 'cm', min: 1, max: 5000, get: () => Math.round(bb().y1 - bb().y0), set: editSet(v => scale('y', v)) },
-          { key: 'bd', label: 'Głębokość', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: 'na wylot', get: () => o.depth || '', set: editSet(v => { if (v > 0) o.depth = v; else delete o.depth; }) },
+          o.ceil ? null : { key: 'bd', label: 'Głębokość', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: 'na wylot', get: () => o.depth || '', set: editSet(v => { if (v > 0) o.depth = v; else delete o.depth; }) },
           { key: 'bx', label: 'Środek X', unit: 'cm', min: -100000, max: 100000, get: () => Math.round((bb().x0 + bb().x1) / 2), set: editSet(v => move('x', v)) },
           { key: 'by', label: 'Środek Y', unit: 'cm', min: -100000, max: 100000, get: () => Math.round((bb().y0 + bb().y1) / 2), set: editSet(v => move('y', v)) },
           { label: 'Powierzchnia', type: 'info', get: () => App.fmtArea(o.pts) },
@@ -1175,7 +1182,7 @@
     if (t === 'hole') {
       const dh = d.hole, wall = dh.target === 'wall', re = (fn) => (v) => { fn(v); renderProps(); };
       const spec = [
-        { key: 'ht', label: 'Gdzie', type: 'select', options: [['floor', 'w stropie (podłoga bieżącej kondygnacji)'], ['wall', 'w ścianie']], get: () => dh.target, set: re(defSet(dh, 'target')) },
+        { key: 'ht', label: 'Gdzie', type: 'select', options: [['floor', 'w stropie (podłoga bieżącej kondygnacji)'], ['ceil', 'w suficie pokoju (własny strop)'], ['wall', 'w ścianie']], get: () => dh.target, set: re(defSet(dh, 'target')) },
       ];
       if (wall) spec.push(
         { key: 'hw', label: 'Szerokość', unit: 'cm', min: 5, max: 2000, get: () => dh.width, set: defSet(dh, 'width') },
@@ -1189,9 +1196,10 @@
           { key: 'hd', label: 'Szerokość (oś Y)', unit: 'cm', min: 5, max: 5000, get: () => dh.wid, set: defSet(dh, 'wid') },
         ] : []),
       );
+      if (dh.target !== 'ceil') spec.push(
+        { key: 'hp', label: 'Głębokość', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: 'na wylot', get: () => dh.depth || '', set: defSet(dh, 'depth') });
       spec.push(
-        { key: 'hp', label: 'Głębokość', unit: 'cm', min: 0, max: 1000, allowEmpty: true, placeholder: 'na wylot', get: () => dh.depth || '', set: defSet(dh, 'depth') },
-        { label: 'Wskazówka', type: 'info', get: () => (wall ? 'Kliknij ścianę w miejscu otworu' : dh.mode === 'rect' ? 'Kliknij środek otworu' : 'Klikaj narożniki, Enter lub pierwszy punkt zamyka')
+        { label: 'Wskazówka', type: 'info', get: () => (wall ? 'Kliknij ścianę w miejscu otworu' : (dh.target === 'ceil' ? 'Sufit pokoju musi być włączony we właściwościach pokoju. ' : '') + (dh.mode === 'rect' ? 'Kliknij środek otworu' : 'Klikaj narożniki, Enter lub pierwszy punkt zamyka'))
           + '. Te same ustawienia ma wycinanie w spacerze (X). Mniejsza głębokość niż ściana / strop – wnęka.' },
       );
       const fm = form('Utwórz otwór', spec);
@@ -1204,8 +1212,9 @@
       const walls = lv.walls.map(w => ({ w, ops: lv.openings.filter(o => o.wallId === w.id && (all || o.empty)) })).filter(x => x.ops.length);
       if (!walls.length) fm.append(itemList('Otwory w ścianach', [], 'Brak otworów w ścianach na tej kondygnacji.'));
       walls.forEach(({ w, ops }) => fm.append(itemList(wallLabel(lv, w), ops.sort((a, b) => App.openingPos(w, a) - App.openingPos(w, b)).map(o => Object.assign({ id: o.id }, openingText(lv, o))))));
-      const holes = (lv.areas || []).filter(a => a.surf === 'hole');
+      const holes = (lv.areas || []).filter(a => a.surf === 'hole' && !a.ceil), ceilHoles = (lv.areas || []).filter(a => a.surf === 'hole' && a.ceil);
       fm.append(itemList('Otwory w stropie (podłoga tej kondygnacji)', holes.map(a => Object.assign({ id: a.id }, holeText(lv, a))), 'Brak otworów w stropie.'));
+      if (ceilHoles.length || dh.target === 'ceil') fm.append(itemList('Otwory w sufitach pokoi', ceilHoles.map(a => Object.assign({ id: a.id }, holeText(lv, a))), 'Brak otworów w sufitach.'));
       return fm;
     }
     if (t === 'plot') return form('Nowa działka', [

@@ -27,7 +27,7 @@ window.App = window.App || {};
     area: { surf: 'floor' },
     // Utwórz otwór: w stropie (obrys rysowany albo prostokąt len × wid) lub w ścianie (width × height, dół sill);
     // depth – głębokość (0 – na wylot; mniej – wnęka w ścianie albo w podłodze).
-    hole: { target: 'floor', mode: 'draw', len: 100, wid: 100, width: 90, height: 200, sill: 0, depth: 0, list: 'made' },
+    hole: { target: 'floor', mode: 'draw', len: 100, wid: 100, width: 90, height: 200, sill: 0, depth: 0, list: 'made' }, // target: floor | ceil | wall
     install: { type: 'socket' },
     roof: { type: 'gable', pitch: 35, overhang: 50, raise: 0, color: '#8f3b2c' },
   };
@@ -424,8 +424,10 @@ window.App = window.App || {};
       });
       return best;
     };
-    const room = App.roomAt(lv, { x: cx, y: cy });
-    const top = -(room ? App.roomDrop(room, i) : 0), thick = room ? App.roomFloor(i, room).thick : 22;
+    // Otwór w suficie pokoju (a.ceil) – w płycie sufitu tego pokoju.
+    const room = a.ceil ? (lv.rooms.filter(r => r.ceil && r.pts.length >= 3 && G.inside({ x: cx, y: cy }, r.pts)).sort((p, q) => Math.abs(G.area(p.pts)) - Math.abs(G.area(q.pts)))[0] || App.roomAt(lv, { x: cx, y: cy })) : App.roomAt(lv, { x: cx, y: cy });
+    const cl = a.ceil ? App.roomCeiling(lv, i, room) : null;
+    const top = cl ? cl.top : -(room ? App.roomDrop(room, i) : 0), thick = cl ? cl.thick : room ? App.roomFloor(i, room).thick : 22;
     return { x0, x1, y0, y1, cx, cy, len: x1 - x0, wid: y1 - y0, room, top, thick,
       left: ray({ x: x0, y: cy }, -1, 0), right: ray({ x: x1, y: cy }, 1, 0), up: ray({ x: cx, y: y0 }, 0, -1), down: ray({ x: cx, y: y1 }, 0, 1) };
   };
@@ -681,6 +683,14 @@ window.App = window.App || {};
     }
     // Skalowanie siatki do dokładnego pola obrysu.
     return cnt ? sum / cnt * own / 1e4 : 0;
+  };
+  // Własny sufit pokoju (room.ceil): płyta grubości ceilT, spodem ceilH nad podłogą pokoju (domyślnie wierzchem
+  // na wysokości ścian kondygnacji). Zwraca rzędne względem podłogi kondygnacji: bottom, top i grubość.
+  App.roomCeiling = (lv, i, r) => {
+    if (!r || !r.ceil) return null;
+    const drop = App.roomDrop(r, i), t = r.ceilT > 0 ? r.ceilT : 20;
+    const h = r.ceilH > 0 ? r.ceilH : App.levelHeight(lv) + drop - t;
+    return { bottom: -drop + h, top: -drop + h + t, thick: t, h };
   };
   // Garaż liczony osobno w podsumowaniu: flaga room.garage, a gdy nieustawiona – po nazwie.
   App.isGarage = (room) => room.garage != null ? !!room.garage : /gara[zż]/i.test(room.name || '');

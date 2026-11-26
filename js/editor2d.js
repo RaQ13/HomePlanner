@@ -724,7 +724,11 @@
     }
     if (t === 'fence' && pts.length >= 2) obj = App.makeFence(pts, closed && pts.length >= 3);
     if (t === 'area' && area) obj = App.makeArea(pts, App.defaults.area.surf);
-    if (t === 'hole' && area) { obj = App.makeArea(pts, 'hole'); if (App.defaults.hole.depth > 0) obj.depth = App.defaults.hole.depth; App.cutEdit = obj.id; }
+    if (t === 'hole' && area) {
+      obj = App.makeArea(pts, 'hole');
+      if (App.defaults.hole.target === 'ceil') { obj.ceil = true; obj.name = 'Otwór w suficie'; } else if (App.defaults.hole.depth > 0) obj.depth = App.defaults.hole.depth;
+      App.cutEdit = obj.id;
+    }
     if (!obj) return;
     App.edit(() => lv[obj.kind + 's'].push(obj));
     App.select(obj.id);
@@ -782,7 +786,7 @@
       if (d.mode === 'rect') {
         const c = { x: E.snap.x, y: E.snap.y }, hx = d.len / 2, hy = d.wid / 2;
         const a = App.makeArea([{ x: c.x - hx, y: c.y - hy }, { x: c.x + hx, y: c.y - hy }, { x: c.x + hx, y: c.y + hy }, { x: c.x - hx, y: c.y + hy }], 'hole');
-        if (d.depth > 0) a.depth = d.depth;
+        if (d.target === 'ceil') { a.ceil = true; a.name = 'Otwór w suficie'; } else if (d.depth > 0) a.depth = d.depth;
         App.edit(() => lv.areas.push(a));
         App.cutEdit = a.id;
         App.select(a.id);
@@ -1776,6 +1780,18 @@
   function drawAreas(lv, tech) {
     lv.areas.forEach(o => {
       path(o.pts);
+      if (o.surf === 'hole' && o.ceil) {
+        // Otwór w suficie pokoju (nad płaszczyzną rzutu): przerywany obrys z przekątnymi.
+        const xs = o.pts.map(q => q.x), ys = o.pts.map(q => q.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        ctx.save(); ctx.clip();
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.moveTo(x1, y0); ctx.lineTo(x0, y1);
+        ctx.strokeStyle = '#64748b'; ctx.lineWidth = px(1); ctx.setLineDash([px(4), px(3)]); ctx.stroke(); ctx.restore();
+        path(o.pts);
+        ctx.strokeStyle = '#334155'; ctx.lineWidth = px(1.2); ctx.setLineDash([px(6), px(3)]); ctx.stroke(); ctx.setLineDash([]);
+        const c = G.centroid(o.pts);
+        label(c.x, c.y, 'otwór w suficie', { font: '10px system-ui, sans-serif', color: '#334155', bg: 'rgba(255,255,255,0.8)' });
+        return;
+      }
       if (o.surf === 'hole' && o.depth > 0) {
         // Wnęka (otwór niepełnej głębokości): jak podłoga obniżona.
         ctx.fillStyle = '#e5e7eb';
