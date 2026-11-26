@@ -407,6 +407,28 @@ window.App = window.App || {};
     const Hh = App.wallHeight(lv, w) - App.wallUnderSlab(i, w) - base;
     return { w, f, pos, a, b, s0, s1, base, sill, top, Hh, left: a - s0, right: s1 - b, above: Hh - top };
   };
+  // Wymiary otworu w stropie (fragment surf 'hole'): prostokąt otaczający x0..x1, y0..y1 i odległości w świetle od jego
+  // krawędzi do lic najbliższych ścian kondygnacji w osiach X i Y (Infinity – brak ściany w tym kierunku).
+  App.holeDims = (lv, i, a) => {
+    if (!a || a.pts.length < 3) return null;
+    const xs = a.pts.map(q => q.x), ys = a.pts.map(q => q.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const edges = lv.walls.filter(w => !w.hidden).map(w => App.wallPolygon(lv, w)).flatMap(pl => pl.map((q, k) => [q, pl[(k + 1) % pl.length]]));
+    const ray = (o, dx, dy) => {
+      let best = Infinity;
+      edges.forEach(([p, q]) => {
+        const ex = q.x - p.x, ey = q.y - p.y, den = dx * ey - dy * ex;
+        if (Math.abs(den) < 1e-9) return;
+        const t = ((p.x - o.x) * ey - (p.y - o.y) * ex) / den, u = ((p.x - o.x) * dy - (p.y - o.y) * dx) / den;
+        if (t > -0.05 && u >= -1e-6 && u <= 1 + 1e-6) best = Math.min(best, Math.max(0, t));
+      });
+      return best;
+    };
+    const room = App.roomAt(lv, { x: cx, y: cy });
+    const top = -(room ? App.roomDrop(room, i) : 0), thick = room ? App.roomFloor(i, room).thick : 22;
+    return { x0, x1, y0, y1, cx, cy, len: x1 - x0, wid: y1 - y0, room, top, thick,
+      left: ray({ x: x0, y: cy }, -1, 0), right: ray({ x: x1, y: cy }, 1, 0), up: ray({ x: cx, y: y0 }, 0, -1), down: ray({ x: cx, y: y1 }, 0, 1) };
+  };
   App.wallEndConnected = (lv, w, end) => {
     const x = end ? w.x2 : w.x1, y = end ? w.y2 : w.y1;
     return lv.walls.some(o => o !== w && (near(o.x1, o.y1, x, y, 1) || near(o.x2, o.y2, x, y, 1)));

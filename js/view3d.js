@@ -335,8 +335,9 @@
     ctx.fillStyle = color; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
     ctx.fillText(text, c.width / 2, c.height / 2 + 2);
     const tex = new THREE.CanvasTexture(c);
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-    const h = 0.11;
+    // Stała wielkość na ekranie (niezależnie od odległości kamery).
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: false }));
+    const h = 0.028;
     sp.scale.set(h * c.width / c.height, h, 1);
     sp.renderOrder = 31;
     return sp;
@@ -346,8 +347,12 @@
     const id = App.cutEdit;
     if (!id || App.selection !== id) return;
     const p = App.project;
-    let i = -1, o = null;
-    p.levels.forEach((lv, k) => { const x = lv.openings.find(q => q.id === id); if (x) { i = k; o = x; } });
+    let i = -1, o = null, hole = null;
+    p.levels.forEach((lv, k) => {
+      const x = lv.openings.find(q => q.id === id); if (x) { i = k; o = x; }
+      const a = (lv.areas || []).find(q => q.id === id && q.surf === 'hole'); if (a) { i = k; hole = a; }
+    });
+    if (hole) return holeDims3d(p.levels[i], i, hole);
     if (!o) return;
     const lv = p.levels[i], D = App.openingDims(lv, i, o);
     if (!D) return;
@@ -381,10 +386,35 @@
     scene.add(dimGroup);
     dimSides();
   }
+  // Wymiary otworu w stropie: na wierzchu podłogi (widok z góry) i na suficie pod spodem (widok z dołu).
+  function holeDims3d(lv, i, a) {
+    const D = App.holeDims(lv, i, a);
+    if (!D) return;
+    const col = '#dc2626', lm = new THREE.LineBasicMaterial({ color: col, depthTest: false }), fmt = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+    dimGroup = new THREE.Group();
+    const zt = App.elevation(i) + D.top;
+    [[1, zt + 1.5], [-1, zt - D.thick - 1.5]].forEach(([sd, z]) => {
+      const P = (x, y) => new THREE.Vector3(x / 100, z / 100, y / 100);
+      const seg = (p0, p1, tick, text) => {
+        const ls = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([p0, p1, p0.clone().add(tick), p0.clone().sub(tick), p1.clone().add(tick), p1.clone().sub(tick)]), lm);
+        ls.renderOrder = 30; ls.userData.side = sd; dimGroup.add(ls);
+        const sp = dimLabel(text, col); sp.position.copy(p0.clone().lerp(p1, 0.5)).add(new THREE.Vector3(0, sd * 0.04, 0)); sp.userData.side = sd; dimGroup.add(sp);
+      };
+      const tx = new THREE.Vector3(0, 0, 0.05), ty = new THREE.Vector3(0.05, 0, 0);
+      const xs = [isFinite(D.left) ? D.x0 - D.left : null, D.x0, D.x1, isFinite(D.right) ? D.x1 + D.right : null];
+      const ys = [isFinite(D.up) ? D.y0 - D.up : null, D.y0, D.y1, isFinite(D.down) ? D.y1 + D.down : null];
+      for (let k = 0; k < 3; k++) if (xs[k] != null && xs[k + 1] != null && xs[k + 1] - xs[k] > 0.05) seg(P(xs[k], D.cy), P(xs[k + 1], D.cy), tx, fmt(xs[k + 1] - xs[k]));
+      for (let k = 0; k < 3; k++) if (ys[k] != null && ys[k + 1] != null && ys[k + 1] - ys[k] > 0.05) seg(P(D.cx, ys[k]), P(D.cx, ys[k + 1]), ty, fmt(ys[k + 1] - ys[k]));
+    });
+    dimGroup.userData.floorZ = (zt - D.thick / 2) / 100;
+    scene.add(dimGroup);
+    dimSides();
+  }
   // Widoczne tylko wymiary na licu zwróconym do kamery.
   function dimSides() {
     if (!dimGroup) return;
-    const q = dimGroup.userData.wall, sd = (camera.position.x - q.x) * q.nx + (camera.position.z - q.z) * q.nz >= 0 ? 1 : -1;
+    const q = dimGroup.userData.wall, fz = dimGroup.userData.floorZ;
+    const sd = q ? ((camera.position.x - q.x) * q.nx + (camera.position.z - q.z) * q.nz >= 0 ? 1 : -1) : (camera.position.y >= fz ? 1 : -1);
     dimGroup.children.forEach(c => { c.visible = c.userData.side === sd; });
   }
   V.setPick = (on) => {
@@ -1922,7 +1952,7 @@
     cutReset();
     App.edit(() => { lv[created.list] = lv[created.list] || []; lv[created.list].push(created.obj); });
     if (sf.level !== p.current) { p.current = sf.level; App.emit('change'); }
-    if (created.list === 'openings') App.cutEdit = created.obj.id;
+    App.cutEdit = created.obj.id;
     App.select(created.obj.id);
   }
   // Kondygnacja w trybie ducha – z wysokości oczu nad rzędnymi kondygnacji.

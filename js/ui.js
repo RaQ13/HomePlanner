@@ -266,13 +266,27 @@
     { key: 'above', label: 'Od góry otworu do góry ściany', min: 0, get: (D) => D.above, set: (o, D, v) => { o.height = Math.max(1, D.Hh - D.sill - v); } },
     { key: 'depth', label: 'Głębokość (puste – na wylot)', min: 0, empty: true, get: (D, o) => o.depth || '', set: (o, D, v) => { if (v > 0 && v < D.w.t) o.depth = v; else delete o.depth; } },
   ];
+  // Otwór w stropie: obrys przesuwany / skalowany względem prostokąta otaczającego (lewa / górna krawędź zostaje).
+  const shiftPts = (o, dx, dy) => o.pts.forEach(q => { q.x += dx; q.y += dy; });
+  const scalePts = (o, ax, from, L0, L1) => { if (L0 < 0.01) return; o.pts.forEach(q => { q[ax] = from + (q[ax] - from) * L1 / L0; }); };
+  const HOLE_FIELDS = [
+    { key: 'len', label: 'Długość (oś X)', min: 1, get: (D) => D.len, set: (o, D, v) => scalePts(o, 'x', D.x0, D.len, v) },
+    { key: 'wid', label: 'Szerokość (oś Y)', min: 1, get: (D) => D.wid, set: (o, D, v) => scalePts(o, 'y', D.y0, D.wid, v) },
+    { key: 'left', label: 'Od ściany z lewej (−X)', min: 0, get: (D) => (isFinite(D.left) ? D.left : ''), set: (o, D, v) => { if (isFinite(D.left)) shiftPts(o, v - D.left, 0); } },
+    { key: 'right', label: 'Od ściany z prawej (+X)', min: 0, get: (D) => (isFinite(D.right) ? D.right : ''), set: (o, D, v) => { if (isFinite(D.right)) shiftPts(o, D.right - v, 0); } },
+    { key: 'up', label: 'Od ściany u góry rzutu (−Y)', min: 0, get: (D) => (isFinite(D.up) ? D.up : ''), set: (o, D, v) => { if (isFinite(D.up)) shiftPts(o, 0, v - D.up); } },
+    { key: 'down', label: 'Od ściany u dołu rzutu (+Y)', min: 0, get: (D) => (isFinite(D.down) ? D.down : ''), set: (o, D, v) => { if (isFinite(D.down)) shiftPts(o, 0, D.down - v); } },
+    { key: 'depth', label: 'Głębokość (puste – na wylot)', min: 0, empty: true, get: (D, o) => o.depth || '', set: (o, D, v) => { if (v > 0) o.depth = v; else delete o.depth; } },
+  ];
   function cutTarget() {
     const id = App.cutEdit;
     if (!id || App.selection !== id) return null;
     const i = App.project.current, lv = App.level(), o = lv.openings.find(x => x.id === id);
-    if (!o) return null;
-    const D = App.openingDims(lv, i, o);
-    return D ? { o, lv, i, D } : null;
+    if (o) { const D = App.openingDims(lv, i, o); return D ? { o, lv, i, D, hole: false } : null; }
+    const a = (lv.areas || []).find(x => x.id === id && x.surf === 'hole');
+    if (!a) return null;
+    const D = App.holeDims(lv, i, a);
+    return D ? { o: a, lv, i, D, hole: true } : null;
   }
   function cutCommit() { if (CP.before) { const b = CP.before; CP.before = null; App.commit(b); } }
   function cutApply(fd, v) {
@@ -297,11 +311,13 @@
     CP.inputs = [];
     CP.el.innerHTML = '';
     CP.el.hidden = false;
-    const kind = t.o.kind === 'window' ? 'okna' : t.o.empty ? (t.o.depth ? 'wnęki' : 'otworu') : 'drzwi';
-    CP.el.append(h('div', { className: 'cut-head' }, h('b', {}, `Edycja ${kind}`), h('span', {}, wallLabel(t.lv, t.D.w)),
+    const kind = t.hole ? (t.o.depth > 0 ? 'wnęki w podłodze' : 'otworu w stropie') : t.o.kind === 'window' ? 'okna' : t.o.empty ? (t.o.depth ? 'wnęki' : 'otworu') : 'drzwi';
+    const where = t.hole ? (t.D.room ? t.D.room.name : 'poza pokojami') + (t.o.pts.length !== 4 ? ` · ${t.o.pts.length} narożn.` : '') : wallLabel(t.lv, t.D.w);
+    CP.el.append(h('div', { className: 'cut-head' }, h('b', {}, `Edycja ${kind}`), h('span', {}, where),
       h('button', { className: 'cut-x', title: 'Zamknij panel', onclick: () => { cutCommit(); App.cutEdit = null; App.emit('select'); } }, '✕')));
-    CUT_FIELDS.forEach(fd => {
-      if (fd.key === 'depth' && !t.o.empty) return;
+    (t.hole ? HOLE_FIELDS : CUT_FIELDS).forEach(fd => {
+      if (fd.key === 'depth' && !t.hole && !t.o.empty) return;
+      if (t.hole && fd.get(t.D, t.o) === '' && !fd.empty) return; // brak ściany w tym kierunku
       const input = h('input', { type: 'number', step: 0.1 });
       input.value = r1(fd.get(t.D, t.o));
       if (fd.empty) input.placeholder = 'na wylot';
@@ -319,8 +335,9 @@
         h('button', { title: '−1 cm (Ctrl – 0,1 cm, Shift – 10 cm)', onclick: step(-1) }, '−'), input,
         h('button', { title: '+1 cm (Ctrl – 0,1 cm, Shift – 10 cm)', onclick: step(1) }, '+'), h('span', { className: 'unit' }, 'cm')));
     });
-    if (t.o.empty && t.o.depth) CP.el.append(h('label', { className: 'cut-check' }, (() => { const c = h('input', { type: 'checkbox' }); c.checked = !!t.o.side; c.onchange = () => App.edit(() => { t.o.side = c.checked; }); return c; })(), ' wnęka od drugiej strony'));
-    CP.el.append(h('p', { className: 'muted small' }, 'Wymiary w świetle – od lic ścian dochodzących. Zmiany widać od razu na rzucie i w 3D (czerwone wymiary). −/+: 1 cm, z Ctrl 0,1 cm, z Shift 10 cm.'));
+    if (!t.hole && t.o.empty && t.o.depth) CP.el.append(h('label', { className: 'cut-check' }, (() => { const c = h('input', { type: 'checkbox' }); c.checked = !!t.o.side; c.onchange = () => App.edit(() => { t.o.side = c.checked; }); return c; })(), ' wnęka od drugiej strony'));
+    CP.el.append(h('p', { className: 'muted small' }, (t.hole ? 'Odległości w świetle – od krawędzi otworu do lic najbliższych ścian w osiach X i Y; zmiana odległości przesuwa otwór, zmiana długości / szerokości – prawą / dolną krawędź.' : 'Wymiary w świetle – od lic ścian dochodzących.')
+      + ' Zmiany widać od razu na rzucie i w 3D (czerwone wymiary). −/+: 1 cm, z Ctrl 0,1 cm, z Shift 10 cm.'));
   }
 
   // ---------- Lista otworów ----------
@@ -592,6 +609,7 @@
         const bb = () => { const xs = o.pts.map(q => q.x), ys = o.pts.map(q => q.y); return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; };
         const scale = (ax, v) => { const b = bb(), c = ax === 'x' ? (b.x0 + b.x1) / 2 : (b.y0 + b.y1) / 2, L = ax === 'x' ? b.x1 - b.x0 : b.y1 - b.y0; if (L < 0.01) return; o.pts.forEach(q => { q[ax] = c + (q[ax] - c) * v / L; }); };
         const move = (ax, v) => { const b = bb(), c = ax === 'x' ? (b.x0 + b.x1) / 2 : (b.y0 + b.y1) / 2; o.pts.forEach(q => { q[ax] += v - c; }); };
+        del.unshift(h('button', { className: 'primary', title: 'Panel z polami zmieniającymi otwór na żywo i wymiarami na rzucie i w 3D', onclick: () => { App.cutEdit = o.id; App.emit('select'); } }, 'Edycja z podglądem'));
         return form(o.depth > 0 ? 'Wnęka w podłodze' : 'Otwór w stropie', [
           { key: 'name', label: 'Nazwa', type: 'text', get: () => o.name || '', set: editSet(v => { o.name = v; }) },
           surf,
